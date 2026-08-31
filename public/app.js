@@ -6,6 +6,9 @@ let currentOrg = null;
 let categories = [];
 let transactions = [];
 let currentType = "expense";
+let currentAccount = "cash"; // 'cash' | 'bank'
+let personFilter = null;     // who_id, чтобы показывать операции только одного человека
+let personBalances = [];
 let ws = null;
 let authToken = null;
 let currentUser = null; // {id, name, is_admin}
@@ -345,11 +348,13 @@ function switchOrgById(id) {
 
 async function switchOrg(org) {
   currentOrg = org;
+  currentAccount = "cash";
+  personFilter = null;
   renderNav();
   document.getElementById("mobileOrgName").textContent = org.name;
   document.getElementById("desktopOrgName").textContent = org.name;
-  document.getElementById("modalOrgName").textContent = org.name;
   closeDrawer();
+  updateAccountTabsUI();
 
   try {
     categories = await api(`/orgs/${org.id}/categories`);
@@ -359,8 +364,26 @@ async function switchOrg(org) {
     categories = [];
   }
 
-  await loadTransactions(org.id);
+  await Promise.all([loadTransactions(org.id), loadPersonBalances()]);
   connectWebSocket(org.id);
+}
+
+function switchAccount(account) {
+  if (currentAccount === account || !currentOrg) return;
+  currentAccount = account;
+  personFilter = null;
+  updateAccountTabsUI();
+  loadTransactions(currentOrg.id);
+  if (account === "cash") loadPersonBalances();
+}
+
+function updateAccountTabsUI() {
+  document.getElementById("tabCash").classList.toggle("active", currentAccount === "cash");
+  document.getElementById("tabBank").classList.toggle("active", currentAccount === "bank");
+  document.getElementById("mainTitleSub").textContent =
+    currentAccount === "cash" ? "Касса и учёт операций" : "Банковский счёт и движения по нему";
+  document.getElementById("personBalances").style.display = currentAccount === "cash" ? "grid" : "none";
+  document.getElementById("dynamicsChart").style.display = currentAccount === "bank" ? "block" : "none";
 }
 
 // ---------- Операции ----------
@@ -373,12 +396,57 @@ async function loadTransactions(orgId, silent) {
     document.getElementById("emptyState").style.display = "none";
   }
   try {
-    transactions = await api(`/orgs/${orgId}/transactions`);
+    transactions = await api(`/orgs/${orgId}/transactions?account=${currentAccount}`);
     render();
   } catch (err) {
     if (!silent) showError("Не удалось загрузить операции: " + err.message);
   }
   if (!silent) document.getElementById("loadingState").style.display = "none";
+}
+
+async function loadPersonBalances() {
+  if (!currentOrg) return;
+  try {
+    personBalances = await api(`/orgs/${currentOrg.id}/person-balances?account=cash`);
+  } catch (err) {
+    personBalances = [];
+  }
+  renderPersonBalances();
+}
+
+function renderPersonBalances() {
+  const el = document.getElementById("personBalances");
+  if (currentAccount !== "cash") return;
+  if (personBalances.length === 0) {
+    el.innerHTML = "";
+    return;
+  }
+  el.innerHTML = personBalances.map(p => `
+    <div class="person-card ${personFilter === p.who_id ? 'active' : ''}" onclick="togglePersonFilter(${p.who_id})">
+      <div class="person-card-name">${escapeHtml(p.who_name || "—")}</div>
+      <div class="person-card-balance" style="color:${Number(p.balance) < 0 ? 'var(--expense)' : 'var(--income)'}">${fmt(p.balance)}</div>
+      <div class="person-card-detail">получено ${fmt(p.total_income)} · потрачено ${fmt(p.total_expense)}</div>
+    </div>
+  `).join("");
+}
+
+function togglePersonFilter(whoId) {
+  personFilter = personFilter === whoId ? null : whoId;
+  renderPersonBalances();
+  renderPersonFilterBar();
+  render();
+}
+
+function renderPersonFilterBar() {
+  const bar = document.getElementById("personFilterBar");
+  if (!personFilter) {
+    bar.style.display = "none";
+    bar.innerHTML = "";
+    return;
+  }
+  const person = personBalances.find(p => p.who_id === personFilter);
+  bar.style.display = "flex";
+  bar.innerHTML = `Показаны только операции: <b style="color:var(--text)">${escapeHtml(person ? person.who_name : "")}</b> <button onclick="togglePersonFilter(${personFilter})">Сбросить фильтр ✕</button>`;
 }
 
 function connectWebSocket(orgId) {
@@ -390,20 +458,28 @@ function connectWebSocket(orgId) {
       const msg = JSON.parse(evt.data);
       if (msg.type === "updated" && currentOrg && String(msg.orgId) === String(currentOrg.id)) {
         loadTransactions(currentOrg.id, true);
+        if (currentAccount === "cash") loadPersonBalances();
       }
     };
   } catch (err) {}
 }
 
 function render() {
-  const sorted = [...transactions].sort((a, b) =>
+  const filtered = personFilter
+    ? transactions.filter(t => t.who_id === personFilter)
+    : transactions;
+
+  const sorted = [...filtered].sort((a, b) =>
     (b.occurred_on + (b.occurred_at || "")).localeCompare(a.occurred_on + (a.occurred_at || ""))
   );
-  const income = transactions.filter(t => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
-  const expense = transactions.filter(t => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0);
+  const income = filtered.filter(t => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
+  const expense = filtered.filter(t => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0);
   document.getElementById("kpiIncome").textContent = fmt(income);
   document.getElementById("kpiExpense").textContent = fmt(expense);
   document.getElementById("kpiBalance").textContent = fmt(income - expense);
+
+  renderPersonFilterBar();
+  if (currentAccount === "bank") drawDynamicsChart();
 
   const tableWrap = document.getElementById("tableWrap");
   const cardList = document.getElementById("cardList");
@@ -422,7 +498,9 @@ function render() {
     const dateFmt = new Date(t.occurred_on).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
     const catCell = t.type === "income"
       ? `<span style="color:var(--income)">Приход · ${escapeHtml(t.source || "—")}</span>`
-      : `<span style="color:${t.category_color || catColor(t.category_name)}">${escapeHtml(t.category_name || "—")}</span>`;
+      : currentAccount === "bank"
+        ? `<span style="color:var(--expense)">Расход</span>`
+        : `<span style="color:${t.category_color || catColor(t.category_name)}">${escapeHtml(t.category_name || "—")}</span>`;
     const descCell = escapeHtml(t.description || "—") + (t.comment ? ` <span style="color:var(--muted);font-style:italic;">· ${escapeHtml(t.comment)}</span>` : "");
     const canEdit = currentUser && (currentUser.is_admin || String(t.created_by) === String(currentUser.id));
     return `<tr>
@@ -437,17 +515,20 @@ function render() {
   }).join("");
 
   cardList.innerHTML = sorted.map(t => {
-    const color = t.type === "income" ? "var(--income)" : (t.category_color || catColor(t.category_name));
+    const color = t.type === "income" ? "var(--income)" : (currentAccount === "bank" ? "var(--expense)" : (t.category_color || catColor(t.category_name)));
     const icon = t.type === "income" ? "↓" : "↑";
     const dateFmt = new Date(t.occurred_on).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
     const canEdit = currentUser && (currentUser.is_admin || String(t.created_by) === String(currentUser.id));
+    const title = t.type === "income"
+      ? "Приход · " + escapeHtml(t.source || "—")
+      : escapeHtml(t.description || t.category_name || "Расход");
     return `<div class="tx-card">
       <div class="tx-icon" style="background:${color}22;color:${color};">${icon}</div>
       <div class="tx-info">
-        <div class="tx-title">${t.type === "income" ? "Приход · " + escapeHtml(t.source || "—") : escapeHtml(t.description || t.category_name)}</div>
+        <div class="tx-title">${title}</div>
         <div class="tx-meta">
           <span>${dateFmt}</span>
-          ${t.type === "expense" ? `<span style="color:${t.category_color || catColor(t.category_name)}">· ${escapeHtml(t.category_name)}</span>` : ""}
+          ${t.type === "expense" && currentAccount === "cash" ? `<span style="color:${t.category_color || catColor(t.category_name)}">· ${escapeHtml(t.category_name)}</span>` : ""}
           ${t.who_name ? `<span>· ${escapeHtml(t.who_name)}</span>` : ""}
         </div>
       </div>
@@ -457,12 +538,52 @@ function render() {
   }).join("");
 }
 
+function drawDynamicsChart() {
+  const svg = document.getElementById("dynamicsSvg");
+  const sortedAsc = [...transactions].sort((a, b) =>
+    (a.occurred_on + (a.occurred_at || "")).localeCompare(b.occurred_on + (b.occurred_at || ""))
+  );
+  if (sortedAsc.length === 0) {
+    svg.innerHTML = `<text x="300" y="80" fill="var(--muted)" font-size="13" text-anchor="middle">Пока нет операций для графика</text>`;
+    return;
+  }
+
+  let running = 0;
+  const points = sortedAsc.map(t => {
+    running += t.type === "income" ? Number(t.amount) : -Number(t.amount);
+    return { date: t.occurred_on, balance: running };
+  });
+
+  const minBal = Math.min(0, ...points.map(p => p.balance));
+  const maxBal = Math.max(0, ...points.map(p => p.balance));
+  const range = maxBal - minBal || 1;
+  const W = 600, H = 160, PAD = 8;
+
+  const coords = points.map((p, i) => {
+    const x = points.length === 1 ? W / 2 : PAD + (i / (points.length - 1)) * (W - PAD * 2);
+    const y = H - PAD - ((p.balance - minBal) / range) * (H - PAD * 2);
+    return [x, y];
+  });
+
+  const zeroY = H - PAD - ((0 - minBal) / range) * (H - PAD * 2);
+  const linePath = coords.map((c, i) => `${i === 0 ? "M" : "L"}${c[0].toFixed(1)},${c[1].toFixed(1)}`).join(" ");
+  const areaPath = `${linePath} L${coords[coords.length - 1][0].toFixed(1)},${H - PAD} L${coords[0][0].toFixed(1)},${H - PAD} Z`;
+
+  svg.innerHTML = `
+    <line x1="0" y1="${zeroY.toFixed(1)}" x2="${W}" y2="${zeroY.toFixed(1)}" stroke="var(--border)" stroke-width="1" stroke-dasharray="4 4"/>
+    <path d="${areaPath}" fill="var(--lilac-deep)" opacity="0.15"/>
+    <path d="${linePath}" fill="none" stroke="var(--lilac)" stroke-width="2"/>
+    ${coords.map((c, i) => `<circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="2.5" fill="${points[i].balance < 0 ? 'var(--expense)' : 'var(--lilac)'}"/>`).join("")}
+  `;
+}
+
 async function removeTx(id) {
   if (!confirm("Удалить эту операцию?")) return;
   try {
     await api(`/orgs/transactions/${id}`, { method: "DELETE" });
     transactions = transactions.filter(t => t.id !== id);
     render();
+    if (currentAccount === "cash") await loadPersonBalances();
   } catch (err) {
     alert("Не удалось удалить: " + err.message);
   }
@@ -478,7 +599,8 @@ let editingTxId = null;
 function openForm() {
   if (!currentOrg) return alert("Сначала выберите организацию");
   editingTxId = null;
-  document.getElementById("modalTitle").innerHTML = `Новая операция · <span id="modalOrgName">${escapeHtml(currentOrg.name)}</span>`;
+  const accountLabel = currentAccount === "cash" ? "касса" : "банк";
+  document.getElementById("modalTitle").innerHTML = `Новая операция · ${accountLabel} · <span id="modalOrgName">${escapeHtml(currentOrg.name)}</span>`;
   document.getElementById("saveTxBtn").textContent = "Сохранить";
   document.getElementById("fAmount").value = "";
   document.getElementById("fDesc").value = "";
@@ -494,7 +616,8 @@ function editTx(id) {
   const t = transactions.find(tx => tx.id === id);
   if (!t) return;
   editingTxId = id;
-  document.getElementById("modalTitle").innerHTML = `Изменить операцию · <span id="modalOrgName">${escapeHtml(currentOrg.name)}</span>`;
+  const accountLabel = currentAccount === "cash" ? "касса" : "банк";
+  document.getElementById("modalTitle").innerHTML = `Изменить операцию · ${accountLabel} · <span id="modalOrgName">${escapeHtml(currentOrg.name)}</span>`;
   document.getElementById("saveTxBtn").textContent = "Сохранить изменения";
   document.getElementById("fAmount").value = t.amount;
   document.getElementById("fDate").value = t.occurred_on.slice(0, 10);
@@ -518,7 +641,7 @@ function setType(t) {
   currentType = t;
   document.getElementById("btnExpense").className = t === "expense" ? "active-expense" : "";
   document.getElementById("btnIncome").className = t === "income" ? "active-income" : "";
-  document.getElementById("categoryField").style.display = t === "expense" ? "block" : "none";
+  document.getElementById("categoryField").style.display = (t === "expense" && currentAccount === "cash") ? "block" : "none";
   document.getElementById("descField").style.display = t === "expense" ? "block" : "none";
   document.getElementById("sourceField").style.display = t === "income" ? "block" : "none";
 }
@@ -531,12 +654,13 @@ async function submitForm(e) {
   const payload = {
     type: currentType,
     amount,
+    account: currentAccount,
     occurred_on: document.getElementById("fDate").value,
     occurred_at: document.getElementById("fTime").value || null,
     comment: document.getElementById("fComment").value.trim() || null,
   };
   if (currentType === "expense") {
-    payload.category_id = Number(document.getElementById("fCategory").value) || null;
+    payload.category_id = currentAccount === "cash" ? (Number(document.getElementById("fCategory").value) || null) : null;
     payload.description = document.getElementById("fDesc").value.trim() || null;
   } else {
     payload.source = document.getElementById("fSource").value.trim() || null;
@@ -549,6 +673,7 @@ async function submitForm(e) {
       await api(`/orgs/${currentOrg.id}/transactions`, { method: "POST", body: JSON.stringify(payload) });
     }
     await loadTransactions(currentOrg.id, true);
+    if (currentAccount === "cash") await loadPersonBalances();
     closeForm();
   } catch (err) {
     alert("Не удалось сохранить: " + err.message);

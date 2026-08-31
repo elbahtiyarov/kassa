@@ -2,17 +2,28 @@ const express = require("express");
 const router = express.Router();
 const pool = require("../db");
 
-// Операции по организации
+// Операции по организации (?account=cash|bank, по умолчанию cash)
+// Обычный пользователь видит только свои операции (и в кассе, и в банке) — только админ видит всех.
 router.get("/:orgId/transactions", async (req, res, next) => {
   try {
+    const account = req.query.account === "bank" ? "bank" : "cash";
+    const restrictToSelf = !req.user.is_admin;
+
+    const params = [req.params.orgId, account];
+    let whoClause = "";
+    if (restrictToSelf) {
+      params.push(req.user.id);
+      whoClause = "AND t.who_id = $3";
+    }
+
     const { rows } = await pool.query(
       `SELECT t.*, c.name AS category_name, c.color AS category_color, u.name AS who_name
        FROM transactions t
        LEFT JOIN categories c ON c.id = t.category_id
        LEFT JOIN users u ON u.id = t.who_id
-       WHERE t.org_id = $1
+       WHERE t.org_id = $1 AND t.account = $2 ${whoClause}
        ORDER BY t.occurred_on DESC, t.occurred_at DESC NULLS LAST, t.id DESC`,
-      [req.params.orgId]
+      params
     );
     res.json(rows);
   } catch (err) {
@@ -26,22 +37,23 @@ router.post("/:orgId/transactions", async (req, res, next) => {
     const orgId = req.params.orgId;
     const {
       type, amount, category_id, source, description,
-      occurred_on, occurred_at, comment,
+      occurred_on, occurred_at, comment, account,
     } = req.body;
 
     if (!type || !amount || !occurred_on) {
       return res.status(400).json({ error: "Обязательны: type, amount, occurred_on" });
     }
+    const acc = account === "bank" ? "bank" : "cash";
 
     // Кто внёс операцию — берётся из токена авторизации, а не из тела запроса
     const userId = req.user.id;
 
     const { rows } = await pool.query(
       `INSERT INTO transactions
-         (org_id, type, amount, category_id, source, description, occurred_on, occurred_at, who_id, comment, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         (org_id, account, type, amount, category_id, source, description, occurred_on, occurred_at, who_id, comment, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        RETURNING *`,
-      [orgId, type, amount, category_id || null, source || null, description || null,
+      [orgId, acc, type, amount, category_id || null, source || null, description || null,
        occurred_on, occurred_at || null, userId, comment || null, userId]
     );
 

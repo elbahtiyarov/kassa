@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS categories (
 CREATE TABLE IF NOT EXISTS transactions (
     id          BIGSERIAL PRIMARY KEY,
     org_id      INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    account     TEXT NOT NULL DEFAULT 'cash' CHECK (account IN ('cash', 'bank')),
     type        TEXT NOT NULL CHECK (type IN ('income', 'expense')),
     amount      NUMERIC(14, 2) NOT NULL CHECK (amount > 0),
     category_id INTEGER REFERENCES categories(id),
@@ -58,8 +59,14 @@ CREATE TABLE IF NOT EXISTS transactions (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- на случай, если таблица уже существовала без этой колонки (старая база)
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS account TEXT NOT NULL DEFAULT 'cash';
+DO $$ BEGIN
+    ALTER TABLE transactions ADD CONSTRAINT transactions_account_check CHECK (account IN ('cash','bank'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE INDEX IF NOT EXISTS idx_transactions_org_date ON transactions (org_id, occurred_on DESC);
+CREATE INDEX IF NOT EXISTS idx_transactions_org_date ON transactions (org_id, account, occurred_on DESC);
 
 CREATE TABLE IF NOT EXISTS transaction_history (
     id              BIGSERIAL PRIMARY KEY,
@@ -87,12 +94,33 @@ CREATE TRIGGER trg_transaction_history
     BEFORE UPDATE ON transactions
     FOR EACH ROW EXECUTE FUNCTION log_transaction_change();
 
-CREATE OR REPLACE VIEW org_balances AS
+-- CREATE OR REPLACE VIEW не позволяет менять порядок/состав столбцов уже существующего
+-- представления — поэтому сначала удаляем старую версию (если есть), затем создаём заново.
+DROP VIEW IF EXISTS org_balances CASCADE;
+CREATE VIEW org_balances AS
 SELECT
     org_id,
+    account,
     COALESCE(SUM(amount) FILTER (WHERE type = 'income'), 0)  AS total_income,
     COALESCE(SUM(amount) FILTER (WHERE type = 'expense'), 0) AS total_expense,
     COALESCE(SUM(amount) FILTER (WHERE type = 'income'), 0) -
     COALESCE(SUM(amount) FILTER (WHERE type = 'expense'), 0) AS balance
 FROM transactions
-GROUP BY org_id;
+GROUP BY org_id, account;
+
+-- Остатки по каждому сотруднику отдельно (для кассы: кто сколько получил/потратил)
+DROP VIEW IF EXISTS person_balances CASCADE;
+CREATE VIEW person_balances AS
+SELECT
+    t.org_id,
+    t.account,
+    t.who_id,
+    u.name AS who_name,
+    COALESCE(SUM(t.amount) FILTER (WHERE t.type = 'income'), 0)  AS total_income,
+    COALESCE(SUM(t.amount) FILTER (WHERE t.type = 'expense'), 0) AS total_expense,
+    COALESCE(SUM(t.amount) FILTER (WHERE t.type = 'income'), 0) -
+    COALESCE(SUM(t.amount) FILTER (WHERE t.type = 'expense'), 0) AS balance
+FROM transactions t
+LEFT JOIN users u ON u.id = t.who_id
+WHERE t.who_id IS NOT NULL
+GROUP BY t.org_id, t.account, t.who_id, u.name;

@@ -75,9 +75,14 @@
       <div class="main-header">
         <div class="main-title">
           <div class="main-title-h" id="desktopOrgName">—</div>
-          <div class="main-title-sub">Касса и учёт операций</div>
+          <div class="main-title-sub" id="mainTitleSub">Касса и учёт операций</div>
         </div>
         <button class="add-btn" onclick="openForm()">+ Добавить операцию</button>
+      </div>
+
+      <div class="account-tabs">
+        <button class="account-tab active" id="tabCash" onclick="switchAccount('cash')">💵 Касса</button>
+        <button class="account-tab" id="tabBank" onclick="switchAccount('bank')">🏦 Банк</button>
       </div>
 
       <div class="kpi-grid">
@@ -94,6 +99,14 @@
           <div class="kpi-value" id="kpiBalance">0 ₸</div>
         </div>
       </div>
+
+      <div id="personBalances" class="person-balances"></div>
+      <div id="dynamicsChart" class="dynamics-card" style="display:none;">
+        <div class="dynamics-title">Динамика остатка</div>
+        <svg id="dynamicsSvg" viewBox="0 0 600 160" preserveAspectRatio="none"></svg>
+      </div>
+
+      <div id="personFilterBar" class="person-filter-bar" style="display:none;"></div>
 
       <div id="errorState" class="error-state" style="display:none;"></div>
       <div id="loadingState" class="loading">Загрузка…</div>
