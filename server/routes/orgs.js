@@ -99,7 +99,7 @@ router.get("/:orgId/person-balances", async (req, res, next) => {
     const account = req.query.account === "bank" ? "bank" : "cash";
     const params = [req.params.orgId, account];
     let whoClause = "";
-    if (!req.user.is_admin) {
+    if (!(req.user.is_admin || req.user.can_view_all)) {
       params.push(req.user.id);
       whoClause = "AND who_id = $3";
     }

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Касса — учёт расходов</title>
 <link rel="stylesheet" href="styles.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -18,8 +19,8 @@
     <div class="login-error" id="loginError"></div>
     <form id="loginForm">
       <div class="field">
-        <label>Телефон</label>
-        <input type="text" id="loginPhone" required placeholder="+7700...">
+        <label>Имя пользователя</label>
+        <input type="text" id="loginPhone" required placeholder="напр. alma">
       </div>
       <div class="field">
         <label>Пароль</label>
@@ -77,7 +78,11 @@
           <div class="main-title-h" id="desktopOrgName">—</div>
           <div class="main-title-sub" id="mainTitleSub">Касса и учёт операций</div>
         </div>
-        <button class="add-btn" onclick="openForm()">+ Добавить операцию</button>
+        <div class="header-actions">
+          <button class="icon-btn" onclick="exportToExcel()" title="Скачать таблицу в Excel">⬇ Excel</button>
+          <button class="icon-btn" onclick="document.getElementById('importFile').click()" title="Загрузить операции из Excel">⬆ Excel</button>
+          <input type="file" id="importFile" accept=".xlsx,.xls" style="display:none;" onchange="handleImportFile(event)">
+        </div>
       </div>
 
       <div class="account-tabs">
@@ -179,10 +184,13 @@
     <div id="usersList"></div>
     <div class="field-row" style="margin-top:16px;">
       <div class="field"><label>Имя</label><input type="text" id="newUserName" placeholder="напр. Талгат"></div>
-      <div class="field"><label>Телефон</label><input type="text" id="newUserPhone" placeholder="+7700..."></div>
+      <div class="field"><label>Имя пользователя (логин)</label><input type="text" id="newUserUsername" placeholder="напр. talgat"></div>
     </div>
     <div class="field-row">
       <div class="field"><label>Пароль</label><input type="password" id="newUserPassword" placeholder="не короче 6 символов"></div>
+      <div class="field"><label>Телефон (для SMS-сброса, необязательно)</label><input type="text" id="newUserPhone" placeholder="+7700..."></div>
+    </div>
+    <div class="field-row">
       <div class="field">
         <label>Роль</label>
         <select id="newUserRole">
@@ -191,9 +199,17 @@
         </select>
       </div>
     </div>
+    <label class="checkbox-row">
+      <input type="checkbox" id="newUserViewAll">
+      <span>Видит записи всех сотрудников (не только свои)</span>
+    </label>
     <button class="save-btn" onclick="createUser()">Добавить пользователя</button>
   </div>
 </div>
+
+<button class="fab-add-btn" onclick="openForm()" title="Добавить операцию">
+  <span class="fab-plus">+</span><span class="fab-label">Добавить операцию</span>
+</button>
 
 <script src="app.js"></script>
 </body>

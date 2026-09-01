@@ -66,12 +66,12 @@ function logout() {
 
 async function submitLogin(e) {
   e.preventDefault();
-  const phone = document.getElementById("loginPhone").value.trim();
+  const login = document.getElementById("loginPhone").value.trim();
   const password = document.getElementById("loginPassword").value;
   const errEl = document.getElementById("loginError");
   errEl.style.display = "none";
   try {
-    const data = await api("/auth/login", { method: "POST", body: JSON.stringify({ phone, password }) });
+    const data = await api("/auth/login", { method: "POST", body: JSON.stringify({ login, password }) });
     saveSession(data.token, data.user);
     document.getElementById("loginScreen").style.display = "none";
     document.getElementById("appLayout").style.display = "flex";
@@ -160,10 +160,14 @@ async function loadUsers() {
     listEl.innerHTML = users.map(u => `
       <div class="user-row">
         <div>
-          <span class="user-row-name">${escapeHtml(u.name)}${u.is_admin ? '<span class="admin-badge">админ</span>' : ""}</span>
-          <div class="user-row-meta">${escapeHtml(u.phone || "—")}</div>
+          <span class="user-row-name">${escapeHtml(u.name)}${u.is_admin ? '<span class="admin-badge">админ</span>' : ""}${!u.is_admin && u.can_view_all ? '<span class="view-all-badge">видит всех</span>' : ""}</span>
+          <div class="user-row-meta">логин: ${escapeHtml(u.username || "—")}${u.phone ? " · " + escapeHtml(u.phone) : ""}</div>
         </div>
-        ${u.id !== currentUser.id ? `<button class="user-row-del" onclick="deleteUser(${u.id})">🗑</button>` : ""}
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button class="user-row-del" title="Задать имя пользователя" onclick="editUsername(${u.id}, '${(u.username || "").replace(/'/g, "\\'")}')">✎</button>
+          ${!u.is_admin ? `<label class="checkbox-row" style="margin:0;font-size:12px;"><input type="checkbox" ${u.can_view_all ? "checked" : ""} onchange="toggleViewAll(${u.id}, this.checked)"> видит всех</label>` : ""}
+          ${u.id !== currentUser.id ? `<button class="user-row-del" onclick="deleteUser(${u.id})">🗑</button>` : ""}
+        </div>
       </div>
     `).join("") || `<div style="color:var(--muted);font-size:13px;">Пользователей нет</div>`;
   } catch (err) {
@@ -171,21 +175,45 @@ async function loadUsers() {
   }
 }
 
+async function toggleViewAll(id, value) {
+  try {
+    await api(`/users/${id}`, { method: "PUT", body: JSON.stringify({ can_view_all: value }) });
+  } catch (err) {
+    alert(err.message);
+    loadUsers();
+  }
+}
+
+async function editUsername(id, current) {
+  const value = prompt("Имя пользователя для входа:", current || "");
+  if (value === null || !value.trim() || value.trim() === current) return;
+  try {
+    await api(`/users/${id}`, { method: "PUT", body: JSON.stringify({ username: value.trim() }) });
+    loadUsers();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
 async function createUser() {
   const name = document.getElementById("newUserName").value.trim();
+  const username = document.getElementById("newUserUsername").value.trim();
   const phone = document.getElementById("newUserPhone").value.trim();
   const password = document.getElementById("newUserPassword").value;
   const role = document.getElementById("newUserRole").value;
-  if (!name || !phone || !password) return alert("Заполните имя, телефон и пароль");
+  const canViewAll = document.getElementById("newUserViewAll").checked;
+  if (!name || !username || !password) return alert("Заполните имя, имя пользователя и пароль");
   try {
     await api("/users", {
       method: "POST",
-      body: JSON.stringify({ name, phone, password, is_admin: role === "admin" }),
+      body: JSON.stringify({ name, username, phone: phone || null, password, is_admin: role === "admin", can_view_all: canViewAll }),
     });
     document.getElementById("newUserName").value = "";
+    document.getElementById("newUserUsername").value = "";
     document.getElementById("newUserPhone").value = "";
     document.getElementById("newUserPassword").value = "";
     document.getElementById("newUserRole").value = "user";
+    document.getElementById("newUserViewAll").checked = false;
     loadUsers();
   } catch (err) {
     alert(err.message);
@@ -421,9 +449,10 @@ function renderPersonBalances() {
     el.innerHTML = "";
     return;
   }
+  const canBrowseOthers = currentUser && (currentUser.is_admin || currentUser.can_view_all);
   el.innerHTML = personBalances.map(p => `
-    <div class="person-card ${personFilter === p.who_id ? 'active' : ''}" onclick="togglePersonFilter(${p.who_id})">
-      <div class="person-card-name">${escapeHtml(p.who_name || "—")}</div>
+    <div class="person-card ${personFilter === p.who_id ? 'active' : ''}" ${canBrowseOthers ? `onclick="togglePersonFilter(${p.who_id})"` : ""} style="${canBrowseOthers ? "" : "cursor:default;"}">
+      <div class="person-card-name">${escapeHtml(p.who_name || "—")}${!canBrowseOthers ? ' <span style="color:var(--muted);font-weight:400;">(вы)</span>' : ""}</div>
       <div class="person-card-balance" style="color:${Number(p.balance) < 0 ? 'var(--expense)' : 'var(--income)'}">${fmt(p.balance)}</div>
       <div class="person-card-detail">получено ${fmt(p.total_income)} · потрачено ${fmt(p.total_expense)}</div>
     </div>
@@ -431,6 +460,7 @@ function renderPersonBalances() {
 }
 
 function togglePersonFilter(whoId) {
+  if (!currentUser || !(currentUser.is_admin || currentUser.can_view_all)) return;
   personFilter = personFilter === whoId ? null : whoId;
   renderPersonBalances();
   renderPersonFilterBar();
@@ -581,7 +611,7 @@ async function removeTx(id) {
   if (!confirm("Удалить эту операцию?")) return;
   try {
     await api(`/orgs/transactions/${id}`, { method: "DELETE" });
-    transactions = transactions.filter(t => t.id !== id);
+    transactions = transactions.filter(t => String(t.id) !== String(id));
     render();
     if (currentAccount === "cash") await loadPersonBalances();
   } catch (err) {
@@ -613,7 +643,7 @@ function openForm() {
 }
 
 function editTx(id) {
-  const t = transactions.find(tx => tx.id === id);
+  const t = transactions.find(tx => String(tx.id) === String(id));
   if (!t) return;
   editingTxId = id;
   const accountLabel = currentAccount === "cash" ? "касса" : "банк";
@@ -702,6 +732,114 @@ async function init() {
     }
   }
   document.getElementById("loginScreen").style.display = "flex";
+}
+
+// ---------- Экспорт / импорт в Excel ----------
+
+const EXPORT_HEADERS = ["Дата", "Время", "Тип", "Категория", "Источник", "Описание", "Сумма", "Кто", "Комментарий"];
+
+function exportToExcel() {
+  if (!currentOrg) return alert("Сначала выберите организацию");
+  const filtered = personFilter ? transactions.filter(t => t.who_id === personFilter) : transactions;
+  if (filtered.length === 0) return alert("Нет операций для выгрузки");
+
+  const sorted = [...filtered].sort((a, b) =>
+    (a.occurred_on + (a.occurred_at || "")).localeCompare(b.occurred_on + (b.occurred_at || ""))
+  );
+
+  const rows = sorted.map(t => ([
+    t.occurred_on.slice(0, 10),
+    t.occurred_at ? t.occurred_at.slice(0, 5) : "",
+    t.type === "income" ? "Приход" : "Расход",
+    t.type === "expense" ? (t.category_name || "") : "",
+    t.type === "income" ? (t.source || "") : "",
+    t.type === "expense" ? (t.description || "") : "",
+    Number(t.amount),
+    t.who_name || "",
+    t.comment || "",
+  ]));
+
+  const ws = XLSX.utils.aoa_to_sheet([EXPORT_HEADERS, ...rows]);
+  ws["!cols"] = [{ wch: 12 }, { wch: 8 }, { wch: 10 }, { wch: 20 }, { wch: 16 }, { wch: 28 }, { wch: 12 }, { wch: 14 }, { wch: 26 }];
+  const wb = XLSX.utils.book_new();
+  const sheetName = currentAccount === "cash" ? "Касса" : "Банк";
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+
+  const filename = `${currentOrg.name}-${sheetName}-${todayStr()}.xlsx`;
+  XLSX.writeFile(wb, filename);
+}
+
+async function handleImportFile(event) {
+  const file = event.target.files[0];
+  event.target.value = ""; // чтобы можно было выбрать тот же файл повторно
+  if (!file || !currentOrg) return;
+
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: "array" });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+
+    if (rows.length === 0) return alert("В файле нет строк с данными");
+
+    let ok = 0, skipped = 0;
+    for (const row of rows) {
+      const parsed = parseImportRow(row);
+      if (!parsed) { skipped++; continue; }
+      try {
+        await api(`/orgs/${currentOrg.id}/transactions`, { method: "POST", body: JSON.stringify(parsed) });
+        ok++;
+      } catch (err) {
+        skipped++;
+      }
+    }
+
+    await loadTransactions(currentOrg.id, true);
+    if (currentAccount === "cash") await loadPersonBalances();
+    alert(`Импорт завершён: добавлено ${ok}, пропущено ${skipped}${skipped ? " (проверьте формат этих строк)" : ""}.`);
+  } catch (err) {
+    alert("Не удалось прочитать файл: " + err.message);
+  }
+}
+
+function excelDateToStr(val) {
+  if (val instanceof Date) return val.toISOString().slice(0, 10);
+  const s = String(val).trim();
+  // поддержка формата DD.MM.YYYY на случай ручного ввода в Excel
+  const m = s.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  return s.slice(0, 10);
+}
+
+function parseImportRow(row) {
+  const typeRaw = String(row["Тип"] || "").trim().toLowerCase();
+  const type = typeRaw.startsWith("приход") ? "income" : typeRaw.startsWith("расход") ? "expense" : null;
+  const amount = Number(row["Сумма"]);
+  const occurred_on = excelDateToStr(row["Дата"]);
+
+  if (!type || !amount || amount <= 0 || !occurred_on || !/^\d{4}-\d{2}-\d{2}$/.test(occurred_on)) {
+    return null;
+  }
+
+  const payload = {
+    type,
+    amount,
+    account: currentAccount,
+    occurred_on,
+    occurred_at: row["Время"] ? String(row["Время"]).trim().slice(0, 5) : null,
+    comment: row["Комментарий"] ? String(row["Комментарий"]).trim() : null,
+  };
+
+  if (type === "expense") {
+    const catName = String(row["Категория"] || "").trim().toLowerCase();
+    const cat = categories.find(c => c.name.toLowerCase() === catName);
+    payload.category_id = cat ? cat.id : null;
+    payload.description = row["Описание"] ? String(row["Описание"]).trim() : null;
+  } else {
+    payload.source = row["Источник"] ? String(row["Источник"]).trim() : null;
+  }
+
+  return payload;
 }
 
 init();

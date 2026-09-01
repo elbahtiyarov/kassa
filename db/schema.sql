@@ -10,13 +10,21 @@ CREATE TABLE IF NOT EXISTS organizations (
 CREATE TABLE IF NOT EXISTS users (
     id            SERIAL PRIMARY KEY,
     name          TEXT NOT NULL,
+    username      TEXT UNIQUE,
     phone         TEXT UNIQUE,
     password_hash TEXT NOT NULL,
     is_admin      BOOLEAN NOT NULL DEFAULT false,
+    can_view_all  BOOLEAN NOT NULL DEFAULT false,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- на случай, если таблица уже существовала без этой колонки (старая база)
+-- на случай, если таблица уже существовала без этих колонок (старая база)
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS can_view_all BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT;
+DO $$ BEGIN
+    ALTER TABLE users ADD CONSTRAINT users_username_key UNIQUE (username);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS user_organizations (
     user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

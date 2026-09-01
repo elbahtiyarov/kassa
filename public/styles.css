@@ -141,6 +141,9 @@ tr:hover .del-btn{opacity:1;}
 .user-row-del{background:transparent;color:var(--muted);}
 .user-row-del:hover{color:var(--expense);}
 .admin-badge{display:inline-block;background:var(--lilac-deep);color:#fff;font-size:10px;padding:1px 6px;border-radius:20px;margin-left:6px;vertical-align:middle;}
+.view-all-badge{display:inline-block;background:var(--surface2);border:1px solid var(--border);color:var(--lilac-soft);font-size:10px;padding:1px 6px;border-radius:20px;margin-left:6px;vertical-align:middle;}
+.checkbox-row{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);margin:2px 0 14px;cursor:pointer;}
+.checkbox-row input{width:16px;height:16px;accent-color:var(--lilac-deep);}
 
 /* Account tabs (Касса / Банк) */
 .account-tabs{display:flex;gap:8px;margin-bottom:20px;}
@@ -163,6 +166,40 @@ tr:hover .del-btn{opacity:1;}
 .dynamics-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:20px;}
 .dynamics-title{color:var(--muted);font-size:12px;margin-bottom:10px;}
 .dynamics-card svg{width:100%;height:140px;display:block;}
+
+/* Header action buttons (Excel export/import) */
+.header-actions{display:flex;gap:8px;margin-left:auto;flex-shrink:0;}
+.icon-btn{background:var(--surface2);color:var(--muted);border:1px solid var(--border);font-size:12px;font-weight:500;padding:8px 12px;border-radius:8px;white-space:nowrap;transition:all .15s;}
+.icon-btn:hover{color:var(--text);border-color:var(--lilac);}
+
+/* Fixed floating "add operation" button */
+.fab-add-btn{
+  position:fixed;
+  bottom:20px;
+  right:20px;
+  z-index:35;
+  background:var(--lilac-deep);
+  color:#fff;
+  border:none;
+  border-radius:999px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:14px;
+  box-shadow:0 6px 20px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06);
+  font-size:15px;
+  font-weight:600;
+  cursor:pointer;
+  transition:opacity .15s, transform .15s;
+}
+.fab-add-btn:hover{opacity:.92;transform:translateY(-1px);}
+.fab-plus{font-size:20px;line-height:1;}
+.fab-label{display:none;}
+
+@media(min-width:640px){
+  .fab-add-btn{padding:14px 20px 14px 16px;bottom:28px;right:28px;}
+  .fab-label{display:inline;}
+}
 
 @media(min-width:768px){
   .sidebar{display:flex;}

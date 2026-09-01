@@ -7,7 +7,7 @@ const pool = require("../db");
 router.get("/:orgId/transactions", async (req, res, next) => {
   try {
     const account = req.query.account === "bank" ? "bank" : "cash";
-    const restrictToSelf = !req.user.is_admin;
+    const restrictToSelf = !(req.user.is_admin || req.user.can_view_all);
 
     const params = [req.params.orgId, account];
     let whoClause = "";

@@ -7,28 +7,32 @@ const pool = require("../db");
 const auth = require("../middleware/auth");
 const { sendSms } = require("../sms");
 
-// Вход по телефону и паролю
+// Вход по логину (имя пользователя или телефон — что удобнее) и паролю
 router.post("/login", async (req, res, next) => {
   try {
-    const { phone, password } = req.body;
-    if (!phone || !password) {
-      return res.status(400).json({ error: "Укажите телефон и пароль" });
+    const { login, password, phone } = req.body;
+    const identifier = (login || phone || "").trim(); // phone — для старых клиентов фронтенда
+    if (!identifier || !password) {
+      return res.status(400).json({ error: "Укажите логин и пароль" });
     }
 
-    const { rows } = await pool.query("SELECT * FROM users WHERE phone = $1", [phone.trim()]);
+    const { rows } = await pool.query(
+      "SELECT * FROM users WHERE username = $1 OR phone = $1",
+      [identifier]
+    );
     const user = rows[0];
-    if (!user) return res.status(401).json({ error: "Неверный телефон или пароль" });
+    if (!user) return res.status(401).json({ error: "Неверный логин или пароль" });
 
     const ok = await bcrypt.compare(password, user.password_hash);
-    if (!ok) return res.status(401).json({ error: "Неверный телефон или пароль" });
+    if (!ok) return res.status(401).json({ error: "Неверный логин или пароль" });
 
     const token = jwt.sign(
-      { id: user.id, name: user.name, is_admin: user.is_admin },
+      { id: user.id, name: user.name, is_admin: user.is_admin, can_view_all: user.can_view_all },
       process.env.JWT_SECRET,
       { expiresIn: "30d" }
     );
 
-    res.json({ token, user: { id: user.id, name: user.name, is_admin: user.is_admin } });
+    res.json({ token, user: { id: user.id, name: user.name, is_admin: user.is_admin, can_view_all: user.can_view_all } });
   } catch (err) {
     next(err);
   }
