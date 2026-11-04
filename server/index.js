@@ -8,6 +8,7 @@ const authRouter = require("./routes/auth");
 const orgsRouter = require("./routes/orgs");
 const transactionsRouter = require("./routes/transactions");
 const usersRouter = require("./routes/users");
+const ordersRouter = require("./routes/orders");
 const authMiddleware = require("./middleware/auth");
 const errorHandler = require("./middleware/errorHandler");
 
@@ -22,6 +23,7 @@ app.use(express.static(path.join(__dirname, "..", "public")));
 app.use("/api/auth", authRouter);
 app.use("/api/orgs", authMiddleware, orgsRouter);
 app.use("/api/orgs", authMiddleware, transactionsRouter); // /:orgId/transactions живёт внутри этого роутера
+app.use("/api/orgs", authMiddleware, ordersRouter);       // /:orgId/orders и /orders/:id
 app.use("/api/users", authMiddleware, usersRouter);
 
 app.use(errorHandler);

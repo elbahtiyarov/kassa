@@ -79,8 +79,8 @@
           <div class="main-title-sub" id="mainTitleSub">Касса и учёт операций</div>
         </div>
         <div class="header-actions">
-          <button class="icon-btn" onclick="exportToExcel()" title="Скачать таблицу в Excel">⬇ Excel</button>
-          <button class="icon-btn" onclick="document.getElementById('importFile').click()" title="Загрузить операции из Excel">⬆ Excel</button>
+          <button class="icon-btn" onclick="exportCurrentView()" title="Скачать таблицу в Excel">⬇ Excel</button>
+          <button class="icon-btn" id="importBtn" onclick="document.getElementById('importFile').click()" title="Загрузить операции из Excel">⬆ Excel</button>
           <input type="file" id="importFile" accept=".xlsx,.xls" style="display:none;" onchange="handleImportFile(event)">
         </div>
       </div>
@@ -88,7 +88,67 @@
       <div class="account-tabs">
         <button class="account-tab active" id="tabCash" onclick="switchAccount('cash')">💵 Касса</button>
         <button class="account-tab" id="tabBank" onclick="switchAccount('bank')">🏦 Банк</button>
+        <button class="account-tab" id="tabOrders" onclick="switchAccount('orders')" style="display:none;">📋 Заказы</button>
       </div>
+
+      <!-- Период — общий для «Касса», «Банк» и «Заказы» -->
+        <div class="orders-filters">
+          <div class="seg" id="periodSeg">
+            <button data-p="month" onclick="setOrderPeriod('month')">Этот месяц</button>
+            <button data-p="prev" onclick="setOrderPeriod('prev')">Прошлый месяц</button>
+            <button data-p="year" onclick="setOrderPeriod('year')">Этот год</button>
+            <button data-p="all" onclick="setOrderPeriod('all')">Всё время</button>
+            <button data-p="custom" onclick="setOrderPeriod('custom')">Период…</button>
+          </div>
+          <div class="custom-range" id="customRange" style="display:none;">
+            <input type="date" id="ordFrom" onchange="onPeriodChange()"> — <input type="date" id="ordTo" onchange="onPeriodChange()">
+          </div>
+          <select id="ordEntity" class="filter-select" onchange="loadOrders()" style="display:none;"></select>
+        </div>
+
+      <!-- ===== Вкладка «Заказы» ===== -->
+      <div id="ordersView" style="display:none;">
+
+        <div class="kpi-grid kpi-grid-5">
+          <div class="kpi-card"><div class="kpi-label">Сумма заказов</div><div class="kpi-value" id="okPrice">0 ₸</div><div class="kpi-sub" id="okCount"></div></div>
+          <div class="kpi-card"><div class="kpi-label">Получено от клиентов</div><div class="kpi-value" style="color:var(--income);" id="okPaid">0 ₸</div><div class="kpi-sub" id="okPaidSub"></div></div>
+          <div class="kpi-card"><div class="kpi-label">Затраты по заказам</div><div class="kpi-value" style="color:var(--expense);" id="okCosts">0 ₸</div><div class="kpi-sub" id="okCostsSub"></div></div>
+          <div class="kpi-card"><div class="kpi-label">Долг клиентов</div><div class="kpi-value" style="color:var(--warn);" id="okDebt">0 ₸</div><div class="kpi-sub" id="okDebtSub"></div></div>
+          <div class="kpi-balance"><div class="kpi-label">Результат заказов</div><div class="kpi-value" id="okResult">0 ₸</div><div class="kpi-sub" style="color:var(--lilac-soft);">цена минус прямые затраты</div></div>
+        </div>
+
+        <div id="ordersLoading" class="loading" style="display:none;">Загрузка…</div>
+        <div id="ordersError" class="error-state" style="display:none;"></div>
+        <div id="ordersEmpty" class="empty-state" style="display:none;">
+          Заказов за этот период нет — добавьте первый через кнопку «Новый заказ»
+        </div>
+
+        <div class="orders-wrap" id="ordersTableWrap">
+          <table class="orders-table">
+            <thead>
+              <tr class="group-row">
+                <th colspan="5"></th>
+                <th colspan="2" class="grp">Получено</th>
+                <th colspan="5" class="grp">Затраты</th>
+                <th colspan="4"></th>
+              </tr>
+              <tr>
+                <th>Дата</th><th>ИП / ТОО</th><th>Заказчик</th><th>Заказ</th><th class="num">Цена</th>
+                <th class="num">Наличными</th><th class="num">В банк</th>
+                <th class="num">Материалы</th><th class="num">Такси</th><th class="num">Дизайнер</th><th class="num">Монтажник</th><th class="num">Прочие</th>
+                <th class="num">Все затраты</th><th class="num">Результат</th><th class="num">Долг клиента</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="ordersBody"></tbody>
+            <tfoot id="ordersFoot"></tfoot>
+          </table>
+        </div>
+        <div class="orders-hint">Нажмите на сумму — откроются все платежи и затраты по ней. Затраты «к оплате» входят в заказ, но в кассу попадут только после оплаты.</div>
+
+        <div class="card-list" id="ordersCards"></div>
+      </div>
+
+      <div id="kassaView">
 
       <div class="kpi-grid">
         <div class="kpi-card">
@@ -100,7 +160,7 @@
           <div class="kpi-value" id="kpiExpense" style="color:var(--expense);">0 ₸</div>
         </div>
         <div class="kpi-balance">
-          <div class="kpi-label">Остаток</div>
+          <div class="kpi-label" id="kpiBalanceLabel">Остаток</div>
           <div class="kpi-value" id="kpiBalance">0 ₸</div>
         </div>
       </div>
@@ -131,6 +191,7 @@
       </div>
 
       <div class="card-list" id="cardList"></div>
+      </div><!-- /kassaView -->
     </div>
   </div>
 </div>
@@ -170,6 +231,16 @@
         <label>Комментарий</label>
         <input type="text" id="fComment" placeholder="необязательно">
       </div>
+      <div class="field-row" id="orderLinkRow">
+        <div class="field">
+          <label>Заказ (необязательно)</label>
+          <select id="fOrder" onchange="updateCostTypeVisibility()"></select>
+        </div>
+        <div class="field" id="costTypeField" style="display:none;">
+          <label>Статья заказа</label>
+          <select id="fCostType"></select>
+        </div>
+      </div>
       <button type="submit" class="save-btn" id="saveTxBtn">Сохранить</button>
     </form>
   </div>
@@ -207,10 +278,96 @@
   </div>
 </div>
 
-<button class="fab-add-btn" onclick="openForm()" title="Добавить операцию">
-  <span class="fab-plus">+</span><span class="fab-label">Добавить операцию</span>
+<!-- Новый / изменить заказ -->
+<div class="modal-overlay" id="orderOverlay" onclick="closeOrderForm()">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-title" id="orderModalTitle">Новый заказ</div>
+      <button class="close-btn" onclick="closeOrderForm()">✕</button>
+    </div>
+    <form id="orderForm">
+      <div class="field-row">
+        <div class="field"><label>Дата заказа</label><input type="date" id="oDate" required></div>
+        <div class="field"><label>ИП / ТОО</label><input type="text" id="oEntity" list="entityList" placeholder="напр. ИП Аланди"></div>
+      </div>
+      <datalist id="entityList"></datalist>
+      <div class="field"><label>Заказчик</label><input type="text" id="oCustomer" required placeholder="напр. Кафе «Бурундай»"></div>
+      <div class="field"><label>Заказ</label><input type="text" id="oTitle" required placeholder="напр. Вывеска, таблички"></div>
+      <div class="field"><label>Цена заказа, ₸</label><input type="number" id="oPrice" min="0" required placeholder="0"></div>
+      <div class="field"><label>Комментарий</label><input type="text" id="oComment" placeholder="необязательно"></div>
+      <button type="submit" class="save-btn" id="saveOrderBtn">Сохранить</button>
+      <button type="button" class="danger-link" id="deleteOrderBtn" onclick="deleteOrder()" style="display:none;">Удалить заказ</button>
+    </form>
+  </div>
+</div>
+
+<!-- Детали заказа: платежи и затраты -->
+<div class="modal-overlay" id="detailsOverlay" onclick="closeOrderDetails()">
+  <div class="modal modal-wide" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="detailsTitle">—</div>
+        <div class="modal-sub" id="detailsSub"></div>
+      </div>
+      <button class="close-btn" onclick="closeOrderDetails()">✕</button>
+    </div>
+    <div class="detail-summary" id="detailsSummary"></div>
+    <div class="detail-focus" id="detailsFocus"></div>
+    <div id="detailsItems"></div>
+    <div class="detail-actions">
+      <button class="pill-btn income" onclick="openItemForm('income')">+ Оплата клиента</button>
+      <button class="pill-btn expense" onclick="openItemForm('expense')">+ Затрата</button>
+      <button class="pill-btn" onclick="editOpenOrder()">✎ Изменить заказ</button>
+    </div>
+  </div>
+</div>
+
+<!-- Новая оплата / затрата по заказу -->
+<div class="modal-overlay" id="itemOverlay" onclick="closeItemForm()" style="z-index:45;">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-title" id="itemModalTitle">—</div>
+      <button class="close-btn" onclick="closeItemForm()">✕</button>
+    </div>
+    <form id="itemForm">
+      <div class="type-toggle">
+        <button type="button" id="iBtnIncome" onclick="setItemType('income')">Оплата клиента</button>
+        <button type="button" id="iBtnExpense" onclick="setItemType('expense')">Затрата</button>
+      </div>
+      <div class="field" id="iCostTypeField">
+        <label>Статья</label>
+        <select id="iCostType" onchange="syncItemCategory()"></select>
+      </div>
+      <div class="field"><label>Сумма, ₸</label><input type="number" id="iAmount" min="0" required placeholder="0"></div>
+      <div class="field-row">
+        <div class="field"><label id="iDateLabel">Дата</label><input type="date" id="iDate" required></div>
+        <div class="field">
+          <label>Касса / счёт</label>
+          <select id="iAccount"><option value="cash">💵 Касса (наличные)</option><option value="bank">🏦 Банк</option></select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Статус</label>
+        <div class="type-toggle" style="margin:0;">
+          <button type="button" id="iStPaid" onclick="setItemStatus('paid')">Оплачено</button>
+          <button type="button" id="iStPlanned" onclick="setItemStatus('planned')">К оплате</button>
+        </div>
+      </div>
+      <div class="field" id="iCategoryField">
+        <label>Категория в кассе</label>
+        <select id="iCategory"></select>
+      </div>
+      <div class="field"><label id="iDescLabel">Описание</label><input type="text" id="iDesc" placeholder="напр. Нурали монтаж"></div>
+      <button type="submit" class="save-btn">Сохранить</button>
+    </form>
+  </div>
+</div>
+
+<button class="fab-add-btn" onclick="primaryAction()" title="Добавить">
+  <span class="fab-plus">+</span><span class="fab-label" id="fabLabel">Добавить операцию</span>
 </button>
 
+<script src="orders.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

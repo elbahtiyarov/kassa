@@ -23,7 +23,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS can_view_all BOOLEAN NOT NULL DEFAULT
 ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT;
 DO $$ BEGIN
     ALTER TABLE users ADD CONSTRAINT users_username_key UNIQUE (username);
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL;  -- индекс уже есть из CREATE TABLE
 END $$;
 
 CREATE TABLE IF NOT EXISTS user_organizations (
@@ -76,6 +76,41 @@ END $$;
 
 CREATE INDEX IF NOT EXISTS idx_transactions_org_date ON transactions (org_id, account, occurred_on DESC);
 
+-- ===== Заказы: один заказ — одна строка =====
+-- Оплаты клиента и затраты заказа — это обычные операции (transactions) с order_id:
+--   приход с order_id  → оплата клиента (account = cash/bank → «наличными» / «в банк»)
+--   расход с order_id  → затрата заказа, статья в cost_type
+-- status = 'planned' — «к оплате»: учитывается в заказе, но НЕ в остатках кассы/банка,
+-- пока его не отметят оплаченным.
+CREATE TABLE IF NOT EXISTS orders (
+    id           SERIAL PRIMARY KEY,
+    org_id       INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    ordered_on   DATE NOT NULL,
+    legal_entity TEXT,            -- ИП / ТОО
+    customer     TEXT NOT NULL,   -- заказчик
+    title        TEXT NOT NULL,   -- что за заказ
+    price        NUMERIC(14, 2) NOT NULL DEFAULT 0 CHECK (price >= 0),
+    comment      TEXT,
+    created_by   INTEGER REFERENCES users(id),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_orders_org_date ON orders (org_id, ordered_on DESC);
+
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS order_id INTEGER REFERENCES orders(id) ON DELETE SET NULL;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS cost_type TEXT;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'paid';
+DO $$ BEGIN
+    ALTER TABLE transactions ADD CONSTRAINT transactions_status_check CHECK (status IN ('paid','planned'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+    ALTER TABLE transactions ADD CONSTRAINT transactions_cost_type_check
+        CHECK (cost_type IS NULL OR cost_type IN ('materials','taxi','designer','installer','other'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_transactions_order ON transactions (order_id) WHERE order_id IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS transaction_history (
     id              BIGSERIAL PRIMARY KEY,
     transaction_id  BIGINT NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
@@ -114,6 +149,7 @@ SELECT
     COALESCE(SUM(amount) FILTER (WHERE type = 'income'), 0) -
     COALESCE(SUM(amount) FILTER (WHERE type = 'expense'), 0) AS balance
 FROM transactions
+WHERE status = 'paid'
 GROUP BY org_id, account;
 
 -- Остатки по каждому сотруднику отдельно (для кассы: кто сколько получил/потратил)
@@ -130,5 +166,5 @@ SELECT
     COALESCE(SUM(t.amount) FILTER (WHERE t.type = 'expense'), 0) AS balance
 FROM transactions t
 LEFT JOIN users u ON u.id = t.who_id
-WHERE t.who_id IS NOT NULL
+WHERE t.who_id IS NOT NULL AND t.status = 'paid'
 GROUP BY t.org_id, t.account, t.who_id, u.name;

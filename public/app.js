@@ -6,7 +6,7 @@ let currentOrg = null;
 let categories = [];
 let transactions = [];
 let currentType = "expense";
-let currentAccount = "cash"; // 'cash' | 'bank'
+let currentAccount = "cash"; // 'cash' | 'bank' | 'orders' (вкладка «Заказы», см. orders.js)
 let personFilter = null;     // who_id, чтобы показывать операции только одного человека
 let personBalances = [];
 let ws = null;
@@ -392,24 +392,36 @@ async function switchOrg(org) {
     categories = [];
   }
 
-  await Promise.all([loadTransactions(org.id), loadPersonBalances()]);
+  await Promise.all([loadTransactions(org.id), loadPersonBalances(), loadOrderOptions()]);
   connectWebSocket(org.id);
 }
 
 function switchAccount(account) {
   if (currentAccount === account || !currentOrg) return;
+  if (account === "orders" && !isPartner()) return;
   currentAccount = account;
   personFilter = null;
   updateAccountTabsUI();
+  if (account === "orders") return loadOrders();
   loadTransactions(currentOrg.id);
   if (account === "cash") loadPersonBalances();
 }
 
 function updateAccountTabsUI() {
+  const isOrders = currentAccount === "orders";
   document.getElementById("tabCash").classList.toggle("active", currentAccount === "cash");
   document.getElementById("tabBank").classList.toggle("active", currentAccount === "bank");
+  document.getElementById("tabOrders").classList.toggle("active", isOrders);
+  document.getElementById("tabOrders").style.display = isPartner() ? "" : "none";
+  document.getElementById("ordersView").style.display = isOrders ? "block" : "none";
+  document.getElementById("kassaView").style.display = isOrders ? "none" : "block";
+  document.getElementById("importBtn").style.display = isOrders ? "none" : "";
+  document.getElementById("ordEntity").style.display = isOrders ? "" : "none";
+  document.getElementById("fabLabel").textContent = isOrders ? "Новый заказ" : "Добавить операцию";
   document.getElementById("mainTitleSub").textContent =
-    currentAccount === "cash" ? "Касса и учёт операций" : "Банковский счёт и движения по нему";
+    isOrders ? "Заказы: цена, оплаты клиентов, затраты и результат"
+    : currentAccount === "cash" ? "Касса и учёт операций" : "Банковский счёт и движения по нему";
+  if (isOrders) return;
   document.getElementById("personBalances").style.display = currentAccount === "cash" ? "grid" : "none";
   document.getElementById("dynamicsChart").style.display = currentAccount === "bank" ? "block" : "none";
 }
@@ -445,12 +457,13 @@ async function loadPersonBalances() {
 function renderPersonBalances() {
   const el = document.getElementById("personBalances");
   if (currentAccount !== "cash") return;
-  if (personBalances.length === 0) {
+  const list = orderPeriod === "all" ? personBalances : personBalancesForPeriod();
+  if (list.length === 0) {
     el.innerHTML = "";
     return;
   }
   const canBrowseOthers = currentUser && (currentUser.is_admin || currentUser.can_view_all);
-  el.innerHTML = personBalances.map(p => `
+  el.innerHTML = list.map(p => `
     <div class="person-card ${personFilter === p.who_id ? 'active' : ''}" ${canBrowseOthers ? `onclick="togglePersonFilter(${p.who_id})"` : ""} style="${canBrowseOthers ? "" : "cursor:default;"}">
       <div class="person-card-name">${escapeHtml(p.who_name || "—")}${!canBrowseOthers ? ' <span style="color:var(--muted);font-weight:400;">(вы)</span>' : ""}</div>
       <div class="person-card-balance" style="color:${Number(p.balance) < 0 ? 'var(--expense)' : 'var(--income)'}">${fmt(p.balance)}</div>
@@ -487,6 +500,12 @@ function connectWebSocket(orgId) {
     ws.onmessage = (evt) => {
       const msg = JSON.parse(evt.data);
       if (msg.type === "updated" && currentOrg && String(msg.orgId) === String(currentOrg.id)) {
+        loadOrderOptions();
+        if (currentAccount === "orders") {
+          loadOrders(true);
+          refreshOpenOrderDetails();
+          return;
+        }
         loadTransactions(currentOrg.id, true);
         if (currentAccount === "cash") loadPersonBalances();
       }
@@ -494,10 +513,43 @@ function connectWebSocket(orgId) {
   } catch (err) {}
 }
 
+// ---------- Период для «Кассы» и «Банка» ----------
+// Получено / потрачено — за выбранный период; остаток — на конец периода (всё до даты «по»).
+
+function inPeriod(t) {
+  const [from, to] = periodRange();
+  const d = t.occurred_on.slice(0, 10);
+  return (!from || d >= from) && (!to || d <= to);
+}
+function beforePeriodEnd(t) {
+  const to = periodRange()[1];
+  return !to || t.occurred_on.slice(0, 10) <= to;
+}
+
+function personBalancesForPeriod() {
+  const map = new Map();
+  for (const t of transactions) {
+    if (!t.who_id || !beforePeriodEnd(t)) continue;
+    if (!map.has(t.who_id)) map.set(t.who_id, { who_id: t.who_id, who_name: t.who_name, total_income: 0, total_expense: 0, balance: 0 });
+    const p = map.get(t.who_id);
+    const a = Number(t.amount) * (t.type === "income" ? 1 : -1);
+    p.balance += a;
+    if (inPeriod(t)) t.type === "income" ? (p.total_income += Number(t.amount)) : (p.total_expense += Number(t.amount));
+  }
+  return [...map.values()].sort((a, b) => String(a.who_name).localeCompare(String(b.who_name)));
+}
+
+function onPeriodChange() {
+  if (currentAccount === "orders") return loadOrders();
+  renderPersonBalances();
+  render();
+}
+
 function render() {
-  const filtered = personFilter
+  const byPerson = personFilter
     ? transactions.filter(t => t.who_id === personFilter)
     : transactions;
+  const filtered = byPerson.filter(inPeriod);
 
   const sorted = [...filtered].sort((a, b) =>
     (b.occurred_on + (b.occurred_at || "")).localeCompare(a.occurred_on + (a.occurred_at || ""))
@@ -506,7 +558,16 @@ function render() {
   const expense = filtered.filter(t => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0);
   document.getElementById("kpiIncome").textContent = fmt(income);
   document.getElementById("kpiExpense").textContent = fmt(expense);
-  document.getElementById("kpiBalance").textContent = fmt(income - expense);
+  const balance = byPerson.filter(beforePeriodEnd)
+    .reduce((s, t) => s + (t.type === "income" ? 1 : -1) * Number(t.amount), 0);
+  document.getElementById("kpiBalance").textContent = fmt(balance);
+  const periodEnd = periodRange()[1];
+  const isPeriod = orderPeriod !== "all";
+  document.getElementById("kpiBalanceLabel").textContent =
+    periodEnd && isPeriod && periodEnd < localDate(new Date()) ? `Остаток на ${dateRu(periodEnd)}` : "Остаток";
+  document.getElementById("emptyState").textContent = isPeriod
+    ? "За выбранный период операций нет"
+    : "Пока нет операций — добавьте первую через кнопку «Добавить операцию»";
 
   renderPersonFilterBar();
   if (currentAccount === "bank") drawDynamicsChart();
@@ -532,11 +593,12 @@ function render() {
         ? `<span style="color:var(--expense)">Расход</span>`
         : `<span style="color:${t.category_color || catColor(t.category_name)}">${escapeHtml(t.category_name || "—")}</span>`;
     const descCell = escapeHtml(t.description || "—") + (t.comment ? ` <span style="color:var(--muted);font-style:italic;">· ${escapeHtml(t.comment)}</span>` : "");
+    const orderTag = t.order_id ? `<div><span class="order-tag" title="Заказ: ${escapeHtml(t.order_customer || "")}">📋 ${escapeHtml(t.order_title || "заказ")}</span></div>` : "";
     const canEdit = currentUser && (currentUser.is_admin || String(t.created_by) === String(currentUser.id));
     return `<tr>
       <td>${dateFmt}</td>
       <td style="color:var(--muted)">${t.occurred_at ? t.occurred_at.slice(0,5) : "—"}</td>
-      <td>${catCell}</td>
+      <td>${catCell}${orderTag}</td>
       <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${descCell}</td>
       <td style="color:var(--muted)">${escapeHtml(t.who_name || "—")}</td>
       <td class="amount-cell ${t.type}">${t.type === "income" ? "+" : "−"}${fmt(t.amount)}</td>
@@ -560,6 +622,7 @@ function render() {
           <span>${dateFmt}</span>
           ${t.type === "expense" && currentAccount === "cash" ? `<span style="color:${t.category_color || catColor(t.category_name)}">· ${escapeHtml(t.category_name)}</span>` : ""}
           ${t.who_name ? `<span>· ${escapeHtml(t.who_name)}</span>` : ""}
+          ${t.order_id ? `<span class="order-tag">📋 ${escapeHtml(t.order_title || "заказ")}</span>` : ""}
         </div>
       </div>
       <div class="tx-amount" style="color:${t.type === "income" ? "var(--income)" : "var(--expense)"};">${t.type === "income" ? "+" : "−"}${fmt(t.amount)}</div>
@@ -570,7 +633,7 @@ function render() {
 
 function drawDynamicsChart() {
   const svg = document.getElementById("dynamicsSvg");
-  const sortedAsc = [...transactions].sort((a, b) =>
+  const sortedAsc = [...transactions].filter(beforePeriodEnd).sort((a, b) =>
     (a.occurred_on + (a.occurred_at || "")).localeCompare(b.occurred_on + (b.occurred_at || ""))
   );
   if (sortedAsc.length === 0) {
@@ -581,8 +644,12 @@ function drawDynamicsChart() {
   let running = 0;
   const points = sortedAsc.map(t => {
     running += t.type === "income" ? Number(t.amount) : -Number(t.amount);
-    return { date: t.occurred_on, balance: running };
-  });
+    return { date: t.occurred_on, balance: running, show: inPeriod(t) };
+  }).filter(p => p.show);
+  if (points.length === 0) {
+    svg.innerHTML = `<text x="300" y="80" fill="var(--muted)" font-size="13" text-anchor="middle">За выбранный период движений нет</text>`;
+    return;
+  }
 
   const minBal = Math.min(0, ...points.map(p => p.balance));
   const maxBal = Math.max(0, ...points.map(p => p.balance));
@@ -638,6 +705,8 @@ function openForm() {
   document.getElementById("fComment").value = "";
   document.getElementById("fDate").value = todayStr();
   document.getElementById("fTime").value = nowStr();
+  fillOrderSelect(null);
+  document.getElementById("fCostType").value = "other";
   setType("expense");
   document.getElementById("modalOverlay").style.display = "flex";
 }
@@ -655,6 +724,8 @@ function editTx(id) {
   document.getElementById("fDesc").value = t.description || "";
   document.getElementById("fSource").value = t.source || "";
   document.getElementById("fComment").value = t.comment || "";
+  fillOrderSelect(t.order_id);
+  document.getElementById("fCostType").value = t.cost_type || "other";
   setType(t.type);
   if (t.type === "expense" && t.category_id) {
     document.getElementById("fCategory").value = t.category_id;
@@ -674,6 +745,13 @@ function setType(t) {
   document.getElementById("categoryField").style.display = (t === "expense" && currentAccount === "cash") ? "block" : "none";
   document.getElementById("descField").style.display = t === "expense" ? "block" : "none";
   document.getElementById("sourceField").style.display = t === "income" ? "block" : "none";
+  updateCostTypeVisibility();
+}
+
+// Поле «Статья заказа» нужно только для расхода, привязанного к заказу
+function updateCostTypeVisibility() {
+  const hasOrder = !!document.getElementById("fOrder").value;
+  document.getElementById("costTypeField").style.display = hasOrder && currentType === "expense" ? "block" : "none";
 }
 
 async function submitForm(e) {
@@ -695,6 +773,8 @@ async function submitForm(e) {
   } else {
     payload.source = document.getElementById("fSource").value.trim() || null;
   }
+  payload.order_id = Number(document.getElementById("fOrder").value) || null;
+  payload.cost_type = payload.order_id && currentType === "expense" ? document.getElementById("fCostType").value : null;
 
   try {
     if (editingTxId) {
@@ -718,6 +798,9 @@ async function init() {
   document.getElementById("forgotStep1Form").addEventListener("submit", submitForgotStep1);
   document.getElementById("forgotStep2Form").addEventListener("submit", submitForgotStep2);
   document.getElementById("txForm").addEventListener("submit", submitForm);
+  document.getElementById("orderForm").addEventListener("submit", submitOrderForm);
+  document.getElementById("itemForm").addEventListener("submit", submitItemForm);
+  initOrdersUI();
   document.getElementById("drawerOverlay").addEventListener("click", closeDrawer);
 
   if (authToken && currentUser) {
@@ -736,12 +819,20 @@ async function init() {
 
 // ---------- Экспорт / импорт в Excel ----------
 
+// Кнопка «⬇ Excel» и плавающая «+» работают по текущей вкладке
+function exportCurrentView() {
+  return currentAccount === "orders" ? exportOrdersToExcel() : exportToExcel();
+}
+function primaryAction() {
+  return currentAccount === "orders" ? openOrderForm() : openForm();
+}
+
 const EXPORT_HEADERS = ["Дата", "Время", "Тип", "Категория", "Источник", "Описание", "Сумма", "Кто", "Комментарий"];
 
 function exportToExcel() {
   if (!currentOrg) return alert("Сначала выберите организацию");
-  const filtered = personFilter ? transactions.filter(t => t.who_id === personFilter) : transactions;
-  if (filtered.length === 0) return alert("Нет операций для выгрузки");
+  const filtered = (personFilter ? transactions.filter(t => t.who_id === personFilter) : transactions).filter(inPeriod);
+  if (filtered.length === 0) return alert("Нет операций для выгрузки за выбранный период");
 
   const sorted = [...filtered].sort((a, b) =>
     (a.occurred_on + (a.occurred_at || "")).localeCompare(b.occurred_on + (b.occurred_at || ""))
