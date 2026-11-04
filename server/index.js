@@ -28,10 +28,28 @@ app.use("/api/users", authMiddleware, usersRouter);
 
 app.use(errorHandler);
 
+// При каждом запуске применяем db/schema.sql. Схема безопасна для повторного запуска
+// (IF NOT EXISTS, ADD COLUMN IF NOT EXISTS) и ничего не удаляет из данных —
+// так новые таблицы/колонки появляются сами после обновления кода (Railway и т.п.),
+// без ручного «node db/migrate.js». Демо-данные (seed) здесь НЕ загружаются.
+async function applySchema() {
+  const fs = require("fs");
+  const pool = require("./db");
+  const schema = fs.readFileSync(path.join(__dirname, "..", "db", "schema.sql"), "utf8");
+  await pool.query(schema);
+  console.log("Схема базы проверена/обновлена");
+}
+
 const PORT = process.env.PORT || 3001;
-const server = app.listen(PORT, () => {
-  console.log(`Касса запущена: http://localhost:${PORT}`);
-});
+let server;
+applySchema()
+  .catch((err) => console.error("Не удалось обновить схему базы:", err.message))
+  .finally(() => {
+    server = app.listen(PORT, () => {
+      console.log(`Касса запущена: http://localhost:${PORT}`);
+    });
+    server.on("upgrade", onUpgrade);
+  });
 
 // --- WebSocket: realtime-обновления между несколькими пользователями ---
 const wss = new WebSocketServer({ noServer: true });
@@ -46,7 +64,7 @@ function broadcast(orgId) {
 }
 app.set("broadcast", broadcast);
 
-server.on("upgrade", (req, socket, head) => {
+function onUpgrade(req, socket, head) {
   if (!req.url.startsWith("/ws")) return;
   wss.handleUpgrade(req, socket, head, (ws) => {
     const orgId = new URL(req.url, "http://x").searchParams.get("orgId");
@@ -54,4 +72,4 @@ server.on("upgrade", (req, socket, head) => {
     orgSockets.get(orgId).add(ws);
     ws.on("close", () => orgSockets.get(orgId)?.delete(ws));
   });
-});
+}
