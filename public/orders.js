@@ -24,6 +24,8 @@ let editingOrderId = null;
 let editingItemId = null;
 let itemType = "income";
 let itemStatus = "paid";
+let itemKey = null;          // защита от двойного сохранения оплаты/затраты
+let savingOrderForm = false;
 
 const isPartner = () => !!(currentUser && (currentUser.is_admin || currentUser.can_view_all));
 const num = v => Number(v || 0);
@@ -253,6 +255,9 @@ function editOpenOrder() {
 
 async function submitOrderForm(e) {
   e.preventDefault();
+  if (savingOrderForm) return;
+  savingOrderForm = true;
+  document.getElementById("saveOrderBtn").disabled = true;
   const payload = {
     ordered_on: document.getElementById("oDate").value,
     legal_entity: document.getElementById("oEntity").value.trim() || null,
@@ -275,6 +280,9 @@ async function submitOrderForm(e) {
     else refreshOpenOrderDetails();
   } catch (err) {
     alert("Не удалось сохранить заказ: " + err.message);
+  } finally {
+    savingOrderForm = false;
+    document.getElementById("saveOrderBtn").disabled = false;
   }
 }
 
@@ -427,6 +435,7 @@ function openItemForm(type, id) {
   if (!openOrderData) return;
   const t = id ? openOrderData.items.find(x => x.id === id) : null;
   editingItemId = t ? t.id : null;
+  itemKey = t ? null : newKey();
 
   document.getElementById("iCategory").innerHTML = `<option value="">— без категории —</option>` +
     categories.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
@@ -492,8 +501,11 @@ function syncItemCategory() {
 
 async function submitItemForm(e) {
   e.preventDefault();
+  if (savingOrderForm) return;
   const amount = Number(document.getElementById("iAmount").value);
   if (!amount || amount <= 0) return alert("Укажите сумму");
+  savingOrderForm = true;
+  document.querySelector("#itemForm .save-btn").disabled = true;
   const order = openOrderData.order;
   const desc = document.getElementById("iDesc").value.trim();
   const payload = {
@@ -520,12 +532,16 @@ async function submitItemForm(e) {
       await api(`/orgs/transactions/${editingItemId}`, { method: "PUT", body: JSON.stringify(payload) });
     } else {
       payload.occurred_at = itemStatus === "paid" ? nowStr() : null;
+      payload.client_key = itemKey;
       await api(`/orgs/${currentOrg.id}/transactions`, { method: "POST", body: JSON.stringify(payload) });
     }
     closeItemForm();
     await Promise.all([refreshOpenOrderDetails(), loadOrders(true)]);
   } catch (err) {
     alert("Не удалось сохранить: " + err.message);
+  } finally {
+    savingOrderForm = false;
+    document.querySelector("#itemForm .save-btn").disabled = false;
   }
 }
 

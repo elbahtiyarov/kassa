@@ -14,7 +14,9 @@ let authToken = null;
 let currentUser = null; // {id, name, is_admin}
 
 const fmt = n => new Intl.NumberFormat("ru-RU").format(Math.round(n || 0)) + " ₸";
-const todayStr = () => new Date().toISOString().slice(0, 10);
+// Дата по местному времени (не UTC) — иначе с 00:00 до 05:00 в Казахстане подставлялось «вчера»
+const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+const newKey = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now() + "-" + Math.random().toString(36).slice(2);
 const nowStr = () => new Date().toTimeString().slice(0, 5);
 const catColor = name => (categories.find(c => c.name === name) || {}).color || "#C9C2D9";
 
@@ -585,14 +587,25 @@ function render() {
   emptyState.style.display = "none";
   tableWrap.style.display = "block";
 
+  const dups = findDuplicateIds(sorted);
+  const dupBanner = document.getElementById("dupBanner");
+  dupBanner.style.display = dups.size ? "block" : "none";
+  dupBanner.innerHTML = dups.size
+    ? `⚠ Найдено ${dups.size} ${dups.size === 1 ? "операция" : dups.size < 5 ? "операции" : "операций"}, похожих на повтор (тот же день, сумма и описание) — они отмечены значком ⚠. Если это ошибочный дубль, удалите лишнюю — остаток сойдётся.`
+    : "";
+
   document.getElementById("tableBody").innerHTML = sorted.map(t => {
     const dateFmt = new Date(t.occurred_on).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
-    const catCell = t.type === "income"
+    const catCell = t.transfer_id
+      ? `<span style="color:var(--lilac-soft)">↔ Перевод ${t.account === "cash" ? (t.type === "income" ? "из банка" : "в банк") : (t.type === "income" ? "из кассы" : "в кассу")}</span>`
+      : t.type === "income"
       ? `<span style="color:var(--income)">Приход · ${escapeHtml(t.source || "—")}</span>`
-      : currentAccount === "bank"
-        ? `<span style="color:var(--expense)">Расход</span>`
-        : `<span style="color:${t.category_color || catColor(t.category_name)}">${escapeHtml(t.category_name || "—")}</span>`;
-    const descCell = escapeHtml(t.description || "—") + (t.comment ? ` <span style="color:var(--muted);font-style:italic;">· ${escapeHtml(t.comment)}</span>` : "");
+      : t.category_name
+        ? `<span style="color:${t.category_color || catColor(t.category_name)}">${escapeHtml(t.category_name)}</span>`
+        : `<span style="color:var(--expense)">Расход</span>`;
+    const descCell = (dups.has(t.id) ? `<span class="dup-mark" title="Похоже на повтор: в этот день есть такая же операция">⚠</span> ` : "")
+      + escapeHtml(t.transfer_id ? (t.comment || "—") : (t.description || "—"))
+      + (t.comment && !t.transfer_id ? ` <span style="color:var(--muted);font-style:italic;">· ${escapeHtml(t.comment)}</span>` : "");
     const orderTag = t.order_id ? `<div><span class="order-tag" title="Заказ: ${escapeHtml(t.order_customer || "")}">📋 ${escapeHtml(t.order_title || "заказ")}</span></div>` : "";
     const canEdit = currentUser && (currentUser.is_admin || String(t.created_by) === String(currentUser.id));
     return `<tr>
@@ -611,16 +624,18 @@ function render() {
     const icon = t.type === "income" ? "↓" : "↑";
     const dateFmt = new Date(t.occurred_on).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
     const canEdit = currentUser && (currentUser.is_admin || String(t.created_by) === String(currentUser.id));
-    const title = t.type === "income"
+    const title = (dups.has(t.id) ? "⚠ " : "") + (t.transfer_id
+      ? "↔ " + escapeHtml(t.source || t.description || "Перевод")
+      : t.type === "income"
       ? "Приход · " + escapeHtml(t.source || "—")
-      : escapeHtml(t.description || t.category_name || "Расход");
+      : escapeHtml(t.description || t.category_name || "Расход"));
     return `<div class="tx-card">
       <div class="tx-icon" style="background:${color}22;color:${color};">${icon}</div>
       <div class="tx-info">
         <div class="tx-title">${title}</div>
         <div class="tx-meta">
           <span>${dateFmt}</span>
-          ${t.type === "expense" && currentAccount === "cash" ? `<span style="color:${t.category_color || catColor(t.category_name)}">· ${escapeHtml(t.category_name)}</span>` : ""}
+          ${t.type === "expense" && t.category_name ? `<span style="color:${t.category_color || catColor(t.category_name)}">· ${escapeHtml(t.category_name)}</span>` : ""}
           ${t.who_name ? `<span>· ${escapeHtml(t.who_name)}</span>` : ""}
           ${t.order_id ? `<span class="order-tag">📋 ${escapeHtml(t.order_title || "заказ")}</span>` : ""}
         </div>
@@ -629,6 +644,21 @@ function render() {
       ${canEdit ? `<button class="del-btn" onclick='editTx(${t.id})'>✎</button><button class="del-btn" onclick="removeTx(${t.id})">🗑</button>` : ""}
     </div>`;
   }).join("");
+}
+
+// Возможные дубли: одинаковые тип, сумма, дата и описание/источник (не переводы)
+function findDuplicateIds(list) {
+  const groups = new Map();
+  for (const t of list) {
+    if (t.transfer_id) continue;
+    const text = String(t.type === "income" ? (t.source || "") : (t.description || "")).trim().toLowerCase();
+    const k = [t.type, Number(t.amount), t.occurred_on.slice(0, 10), text, t.category_id || ""].join("|");
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(t.id);
+  }
+  const ids = new Set();
+  for (const g of groups.values()) if (g.length > 1) g.forEach(id => ids.add(id));
+  return ids;
 }
 
 function drawDynamicsChart() {
@@ -675,11 +705,14 @@ function drawDynamicsChart() {
 }
 
 async function removeTx(id) {
-  if (!confirm("Удалить эту операцию?")) return;
+  const t = transactions.find(x => String(x.id) === String(id));
+  const msg = t && t.transfer_id
+    ? "Удалить перевод между кассой и банком? Удалятся обе его части — и в кассе, и в банке."
+    : "Удалить эту операцию?";
+  if (!confirm(msg)) return;
   try {
     await api(`/orgs/transactions/${id}`, { method: "DELETE" });
-    transactions = transactions.filter(t => String(t.id) !== String(id));
-    render();
+    await loadTransactions(currentOrg.id, true);
     if (currentAccount === "cash") await loadPersonBalances();
   } catch (err) {
     alert("Не удалось удалить: " + err.message);
@@ -692,13 +725,19 @@ function openDrawer() { document.getElementById("drawerOverlay").style.display =
 function closeDrawer() { document.getElementById("drawerOverlay").style.display = "none"; }
 
 let editingTxId = null;
+let formAccount = "cash";   // куда записывается операция — выбирается прямо в форме
+let formKey = null;         // ключ от двойного сохранения (один на одно заполнение формы)
+let savingTx = false;
 
 function openForm() {
   if (!currentOrg) return alert("Сначала выберите организацию");
   editingTxId = null;
-  const accountLabel = currentAccount === "cash" ? "касса" : "банк";
-  document.getElementById("modalTitle").innerHTML = `Новая операция · ${accountLabel} · <span id="modalOrgName">${escapeHtml(currentOrg.name)}</span>`;
+  formKey = newKey();
+  document.getElementById("modalTitle").innerHTML = `Новая операция · <span id="modalOrgName">${escapeHtml(currentOrg.name)}</span>`;
   document.getElementById("saveTxBtn").textContent = "Сохранить";
+  document.getElementById("saveMoreBtn").style.display = "";
+  document.getElementById("btnTransfer").style.display = "";
+  setFormAccount(currentAccount === "bank" ? "bank" : "cash");
   document.getElementById("fAmount").value = "";
   document.getElementById("fDesc").value = "";
   document.getElementById("fSource").value = "";
@@ -714,10 +753,14 @@ function openForm() {
 function editTx(id) {
   const t = transactions.find(tx => String(tx.id) === String(id));
   if (!t) return;
+  if (t.transfer_id) return alert("Это перевод между кассой и банком. Его нельзя изменить — удалите (удалятся обе части) и внесите заново.");
   editingTxId = id;
-  const accountLabel = currentAccount === "cash" ? "касса" : "банк";
-  document.getElementById("modalTitle").innerHTML = `Изменить операцию · ${accountLabel} · <span id="modalOrgName">${escapeHtml(currentOrg.name)}</span>`;
+  formKey = null;
+  document.getElementById("modalTitle").innerHTML = `Изменить операцию · <span id="modalOrgName">${escapeHtml(currentOrg.name)}</span>`;
   document.getElementById("saveTxBtn").textContent = "Сохранить изменения";
+  document.getElementById("saveMoreBtn").style.display = "none";
+  document.getElementById("btnTransfer").style.display = "none";
+  setFormAccount(t.account);   // можно перенести операцию из кассы в банк и обратно
   document.getElementById("fAmount").value = t.amount;
   document.getElementById("fDate").value = t.occurred_on.slice(0, 10);
   document.getElementById("fTime").value = t.occurred_at ? t.occurred_at.slice(0, 5) : "";
@@ -738,14 +781,51 @@ function closeForm() {
   editingTxId = null;
 }
 
+function setFormAccount(a) {
+  formAccount = a === "bank" ? "bank" : "cash";
+  document.getElementById("fAccCash").className = formAccount === "cash" ? "active" : "";
+  document.getElementById("fAccBank").className = formAccount === "bank" ? "active" : "";
+  updateTransferHint();
+  checkPossibleDuplicate();
+}
+
+function updateTransferHint() {
+  const el = document.getElementById("transferHint");
+  if (currentType !== "transfer") { el.style.display = "none"; return; }
+  el.style.display = "block";
+  el.innerHTML = formAccount === "cash"
+    ? "Из <b>кассы</b> в <b>банк</b> (сдали наличные на счёт). Чтобы наоборот — выберите сверху «Банк»."
+    : "Из <b>банка</b> в <b>кассу</b> (сняли со счёта наличными). Чтобы наоборот — выберите сверху «Касса».";
+}
+
 function setType(t) {
   currentType = t;
   document.getElementById("btnExpense").className = t === "expense" ? "active-expense" : "";
   document.getElementById("btnIncome").className = t === "income" ? "active-income" : "";
-  document.getElementById("categoryField").style.display = (t === "expense" && currentAccount === "cash") ? "block" : "none";
+  document.getElementById("btnTransfer").className = t === "transfer" ? "active-transfer" : "";
+  document.getElementById("categoryField").style.display = t === "expense" ? "block" : "none";
   document.getElementById("descField").style.display = t === "expense" ? "block" : "none";
   document.getElementById("sourceField").style.display = t === "income" ? "block" : "none";
+  document.getElementById("orderLinkRow").style.visibility = t === "transfer" ? "hidden" : "";
+  if (t === "transfer") document.getElementById("orderLinkRow").style.display = "none";
+  else if (orderOptions.length) document.getElementById("orderLinkRow").style.display = "";
+  updateTransferHint();
   updateCostTypeVisibility();
+  checkPossibleDuplicate();
+}
+
+// Предупреждение «похоже, такая операция уже есть» — частая причина расхождения остатков
+function checkPossibleDuplicate() {
+  const el = document.getElementById("dupWarning");
+  const amount = Number(document.getElementById("fAmount").value);
+  const date = document.getElementById("fDate").value;
+  if (!amount || !date || currentType === "transfer" || formAccount !== currentAccount) { el.style.display = "none"; return; }
+  const same = transactions.find(t => String(t.id) !== String(editingTxId) && t.type === currentType
+    && Number(t.amount) === amount && t.occurred_on.slice(0, 10) === date);
+  if (!same) { el.style.display = "none"; return; }
+  const what = same.type === "income" ? (same.source || "приход") : (same.description || same.category_name || "расход");
+  el.innerHTML = `⚠ За ${date.split("-").reverse().join(".")} уже есть ${same.type === "income" ? "приход" : "расход"} на ${fmt(amount)}: «${escapeHtml(what)}»${same.who_name ? " (" + escapeHtml(same.who_name) + ")" : ""}. Проверьте, не вносите ли второй раз.`;
+  el.style.display = "block";
 }
 
 // Поле «Статья заказа» нужно только для расхода, привязанного к заказу
@@ -754,40 +834,87 @@ function updateCostTypeVisibility() {
   document.getElementById("costTypeField").style.display = hasOrder && currentType === "expense" ? "block" : "none";
 }
 
-async function submitForm(e) {
-  e.preventDefault();
+async function submitForm(e, keepOpen) {
+  if (e) e.preventDefault();
+  if (savingTx) return;                       // второй клик, пока первый ещё сохраняется
+  const form = document.getElementById("txForm");
+  if (!form.reportValidity()) return;
   const amount = Number(document.getElementById("fAmount").value);
   if (!amount || amount <= 0 || !currentOrg) return;
 
-  const payload = {
-    type: currentType,
+  const common = {
     amount,
-    account: currentAccount,
     occurred_on: document.getElementById("fDate").value,
     occurred_at: document.getElementById("fTime").value || null,
     comment: document.getElementById("fComment").value.trim() || null,
+    client_key: editingTxId ? undefined : formKey,
   };
-  if (currentType === "expense") {
-    payload.category_id = currentAccount === "cash" ? (Number(document.getElementById("fCategory").value) || null) : null;
-    payload.description = document.getElementById("fDesc").value.trim() || null;
-  } else {
-    payload.source = document.getElementById("fSource").value.trim() || null;
-  }
-  payload.order_id = Number(document.getElementById("fOrder").value) || null;
-  payload.cost_type = payload.order_id && currentType === "expense" ? document.getElementById("fCostType").value : null;
 
-  try {
-    if (editingTxId) {
-      await api(`/orgs/transactions/${editingTxId}`, { method: "PUT", body: JSON.stringify(payload) });
+  let url, method = "POST", body;
+  if (currentType === "transfer") {
+    url = `/orgs/${currentOrg.id}/transfers`;
+    body = { ...common, from: formAccount };
+  } else {
+    body = { ...common, type: currentType, account: formAccount };
+    if (currentType === "expense") {
+      body.category_id = Number(document.getElementById("fCategory").value) || null;
+      body.description = document.getElementById("fDesc").value.trim() || null;
     } else {
-      await api(`/orgs/${currentOrg.id}/transactions`, { method: "POST", body: JSON.stringify(payload) });
+      body.source = document.getElementById("fSource").value.trim() || null;
     }
-    await loadTransactions(currentOrg.id, true);
-    if (currentAccount === "cash") await loadPersonBalances();
-    closeForm();
+    body.order_id = Number(document.getElementById("fOrder").value) || null;
+    body.cost_type = body.order_id && currentType === "expense" ? document.getElementById("fCostType").value : null;
+    if (editingTxId) { url = `/orgs/transactions/${editingTxId}`; method = "PUT"; }
+    else url = `/orgs/${currentOrg.id}/transactions`;
+  }
+
+  savingTx = true;
+  const btns = [document.getElementById("saveTxBtn"), document.getElementById("saveMoreBtn")];
+  btns.forEach(b => b.disabled = true);
+  try {
+    await api(url, { method, body: JSON.stringify(body) });
+    const where = currentType === "transfer"
+      ? (formAccount === "cash" ? "Перевод касса → банк сохранён" : "Перевод банк → касса сохранён")
+      : `Сохранено в ${formAccount === "bank" ? "банк" : "кассу"}`;
+    if (!editingTxId && currentType !== "transfer" && formAccount !== currentAccount && currentAccount !== "orders") {
+      showToast(`${where} — она на вкладке «${formAccount === "bank" ? "Банк" : "Касса"}»`);
+    } else {
+      showToast(where);
+    }
+    if (currentAccount !== "orders") {
+      await loadTransactions(currentOrg.id, true);
+      if (currentAccount === "cash") await loadPersonBalances();
+    }
+    if (keepOpen && !editingTxId) {
+      // следующая операция: та же дата, касса/банк, тип и категория; сумма и описание — заново
+      formKey = newKey();
+      ["fAmount", "fDesc", "fSource", "fComment"].forEach(id => document.getElementById(id).value = "");
+      document.getElementById("fTime").value = nowStr();
+      document.getElementById("dupWarning").style.display = "none";
+      document.getElementById("fAmount").focus();
+    } else {
+      closeForm();
+    }
   } catch (err) {
     alert("Не удалось сохранить: " + err.message);
+  } finally {
+    savingTx = false;
+    btns.forEach(b => b.disabled = false);
   }
+}
+
+function showToast(text) {
+  let el = document.getElementById("toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "toast";
+    el.className = "toast";
+    document.body.appendChild(el);
+  }
+  el.textContent = text;
+  el.classList.add("show");
+  clearTimeout(showToast.t);
+  showToast.t = setTimeout(() => el.classList.remove("show"), 3200);
 }
 
 // ---------- Старт ----------
@@ -797,7 +924,8 @@ async function init() {
   document.getElementById("loginForm").addEventListener("submit", submitLogin);
   document.getElementById("forgotStep1Form").addEventListener("submit", submitForgotStep1);
   document.getElementById("forgotStep2Form").addEventListener("submit", submitForgotStep2);
-  document.getElementById("txForm").addEventListener("submit", submitForm);
+  document.getElementById("txForm").addEventListener("submit", e => submitForm(e, false));
+  ["fAmount", "fDate"].forEach(id => document.getElementById(id).addEventListener("input", checkPossibleDuplicate));
   document.getElementById("orderForm").addEventListener("submit", submitOrderForm);
   document.getElementById("itemForm").addEventListener("submit", submitItemForm);
   initOrdersUI();
@@ -867,48 +995,100 @@ async function handleImportFile(event) {
 
   try {
     const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, { type: "array" });
+    const wb = XLSX.read(buf, { type: "array", cellDates: true });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
 
     if (rows.length === 0) return alert("В файле нет строк с данными");
 
-    let ok = 0, skipped = 0;
-    for (const row of rows) {
-      const parsed = parseImportRow(row);
-      if (!parsed) { skipped++; continue; }
+    // Операции, которые уже есть в программе, второй раз не загружаем: повторный импорт
+    // того же файла раньше удваивал все суммы. Считаем «сколько таких уже есть», чтобы
+    // две одинаковые поездки на такси в один день из файла не потерялись.
+    const existing = new Map();
+    for (const t of transactions) {
+      const k = importKey(t.type, t.amount, t.occurred_on, t.type === "income" ? t.source : t.description);
+      existing.set(k, (existing.get(k) || 0) + 1);
+    }
+
+    let ok = 0, bad = 0, dup = 0;
+    const badRows = [];
+    for (let i = 0; i < rows.length; i++) {
+      const parsed = parseImportRow(rows[i]);
+      if (!parsed) { bad++; if (badRows.length < 5) badRows.push(i + 2); continue; }
+      const k = importKey(parsed.type, parsed.amount, parsed.occurred_on, parsed.type === "income" ? parsed.source : parsed.description);
+      if (existing.get(k) > 0) { existing.set(k, existing.get(k) - 1); dup++; continue; }
       try {
         await api(`/orgs/${currentOrg.id}/transactions`, { method: "POST", body: JSON.stringify(parsed) });
         ok++;
       } catch (err) {
-        skipped++;
+        bad++;
+        if (badRows.length < 5) badRows.push(i + 2);
       }
     }
 
     await loadTransactions(currentOrg.id, true);
     if (currentAccount === "cash") await loadPersonBalances();
-    alert(`Импорт завершён: добавлено ${ok}, пропущено ${skipped}${skipped ? " (проверьте формат этих строк)" : ""}.`);
+    const where = currentAccount === "bank" ? "банк" : "кассу";
+    alert(`Импорт в ${where} завершён.\n\nДобавлено: ${ok}` +
+      (dup ? `\nУже были в программе (пропущены): ${dup}` : "") +
+      (bad ? `\nНе удалось прочитать: ${bad} (строки Excel: ${badRows.join(", ")}${bad > badRows.length ? "…" : ""}) — проверьте дату, тип «Приход/Расход» и сумму` : ""));
   } catch (err) {
     alert("Не удалось прочитать файл: " + err.message);
   }
 }
 
+function importKey(type, amount, date, text) {
+  return [type, Number(amount), String(date).slice(0, 10), String(text || "").trim().toLowerCase()].join("|");
+}
+
+// Дата из Excel: настоящая дата Excel, число-серийник, «03.11.2026», «3.11.26» или «2026-11-03»
 function excelDateToStr(val) {
-  if (val instanceof Date) return val.toISOString().slice(0, 10);
+  const pad = n => String(n).padStart(2, "0");
+  if (val instanceof Date && !isNaN(val)) {
+    // SheetJS отдаёт полночь по местному времени — берём местные день/месяц/год, а не UTC
+    const d = new Date(val.getTime() + 60 * 1000); // защита от «23:59:59.999» из-за округления Excel
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+  if (typeof val === "number" && val > 20000 && val < 80000) {
+    const d = new Date(Math.round((val - 25569) * 86400 * 1000));
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+  }
   const s = String(val).trim();
-  // поддержка формата DD.MM.YYYY на случай ручного ввода в Excel
-  const m = s.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
-  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
-  return s.slice(0, 10);
+  let m = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4}|\d{2})(?!\d)/);
+  if (m) {
+    const y = m[3].length === 2 ? "20" + m[3] : m[3];
+    return `${y}-${pad(m[2])}-${pad(m[1])}`;
+  }
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? m[0] : "";
+}
+
+// «8 000 ₸», «-8000», «8000,50» → 8000 / 8000.5 (знак не важен — тип задаётся колонкой «Тип»)
+function parseAmount(val) {
+  if (typeof val === "number") return Math.abs(val);
+  const s = String(val).replace(/[\s ₸тг]/gi, "").replace(/[−–]/g, "-").replace(",", ".");
+  return Math.abs(Number(s));
+}
+
+function excelTimeToStr(val) {
+  if (val instanceof Date && !isNaN(val)) return `${String(val.getHours()).padStart(2, "0")}:${String(val.getMinutes()).padStart(2, "0")}`;
+  const m = String(val || "").trim().match(/^(\d{1,2}):(\d{2})/);
+  return m ? `${m[1].padStart(2, "0")}:${m[2]}` : null;
 }
 
 function parseImportRow(row) {
   const typeRaw = String(row["Тип"] || "").trim().toLowerCase();
-  const type = typeRaw.startsWith("приход") ? "income" : typeRaw.startsWith("расход") ? "expense" : null;
-  const amount = Number(row["Сумма"]);
+  let type = typeRaw.startsWith("приход") ? "income" : typeRaw.startsWith("расход") ? "expense" : null;
+  const rawAmount = row["Сумма"];
+  // если колонки «Тип» нет — определяем по знаку суммы
+  if (!type && rawAmount !== "") {
+    const signed = typeof rawAmount === "number" ? rawAmount : Number(String(rawAmount).replace(/[\s ₸]/g, "").replace(/[−–]/g, "-").replace(",", "."));
+    if (signed < 0) type = "expense"; else if (signed > 0) type = "income";
+  }
+  const amount = parseAmount(rawAmount);
   const occurred_on = excelDateToStr(row["Дата"]);
 
-  if (!type || !amount || amount <= 0 || !occurred_on || !/^\d{4}-\d{2}-\d{2}$/.test(occurred_on)) {
+  if (!type || !amount || amount <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(occurred_on)) {
     return null;
   }
 
@@ -917,8 +1097,9 @@ function parseImportRow(row) {
     amount,
     account: currentAccount,
     occurred_on,
-    occurred_at: row["Время"] ? String(row["Время"]).trim().slice(0, 5) : null,
+    occurred_at: excelTimeToStr(row["Время"]),
     comment: row["Комментарий"] ? String(row["Комментарий"]).trim() : null,
+    who_name: row["Кто"] ? String(row["Кто"]).trim() : null,
   };
 
   if (type === "expense") {

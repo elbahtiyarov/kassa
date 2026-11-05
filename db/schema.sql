@@ -111,6 +111,16 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 CREATE INDEX IF NOT EXISTS idx_transactions_order ON transactions (order_id) WHERE order_id IS NOT NULL;
 
+-- Перевод между кассой и банком = две связанные операции с одним transfer_id:
+-- расход там, откуда взяли, и приход туда, куда положили. Удаляются только вместе.
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS transfer_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_transactions_transfer ON transactions (transfer_id) WHERE transfer_id IS NOT NULL;
+
+-- Защита от двойного сохранения: форма присылает уникальный ключ, и повторная отправка
+-- той же формы (двойной клик, медленный интернет) не создаёт вторую операцию.
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS client_key TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_transactions_client_key ON transactions (client_key) WHERE client_key IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS transaction_history (
     id              BIGSERIAL PRIMARY KEY,
     transaction_id  BIGINT NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,

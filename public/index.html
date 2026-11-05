@@ -175,6 +175,7 @@
 
       <div id="errorState" class="error-state" style="display:none;"></div>
       <div id="loadingState" class="loading">Загрузка…</div>
+      <div id="dupBanner" class="dup-banner" style="display:none;"></div>
       <div id="emptyState" class="empty-state" style="display:none;">
         Пока нет операций — добавьте первую через кнопку «Добавить операцию»
       </div>
@@ -203,10 +204,16 @@
       <button class="close-btn" onclick="closeForm()">✕</button>
     </div>
     <form id="txForm">
-      <div class="type-toggle">
+      <div class="acc-toggle" id="accToggle">
+        <button type="button" id="fAccCash" onclick="setFormAccount('cash')">💵 Касса</button>
+        <button type="button" id="fAccBank" onclick="setFormAccount('bank')">🏦 Банк</button>
+      </div>
+      <div class="type-toggle type-toggle-3">
         <button type="button" id="btnExpense" class="active-expense" onclick="setType('expense')">Расход</button>
         <button type="button" id="btnIncome" onclick="setType('income')">Приход</button>
+        <button type="button" id="btnTransfer" onclick="setType('transfer')">↔ Перевод</button>
       </div>
+      <div class="transfer-hint" id="transferHint" style="display:none;"></div>
       <div class="field">
         <label>Сумма, ₸</label>
         <input type="number" id="fAmount" min="0" required placeholder="0">
@@ -231,6 +238,7 @@
         <label>Комментарий</label>
         <input type="text" id="fComment" placeholder="необязательно">
       </div>
+      <div class="dup-warning" id="dupWarning" style="display:none;"></div>
       <div class="field-row" id="orderLinkRow">
         <div class="field">
           <label>Заказ (необязательно)</label>
@@ -241,7 +249,10 @@
           <select id="fCostType"></select>
         </div>
       </div>
-      <button type="submit" class="save-btn" id="saveTxBtn">Сохранить</button>
+      <div class="save-row">
+        <button type="submit" class="save-btn" id="saveTxBtn">Сохранить</button>
+        <button type="button" class="save-btn save-more" id="saveMoreBtn" onclick="submitForm(event, true)" title="Сохранить и сразу внести следующую — дата, касса/банк и категория останутся">Сохранить и ещё</button>
+      </div>
     </form>
   </div>
 </div>

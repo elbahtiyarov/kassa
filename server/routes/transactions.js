@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const crypto = require("crypto");
 const pool = require("../db");
 
 const COST_TYPES = ["materials", "taxi", "designer", "installer", "other"];
@@ -57,7 +58,7 @@ router.post("/:orgId/transactions", async (req, res, next) => {
     const {
       type, amount, category_id, source, description,
       occurred_on, occurred_at, comment, account,
-      order_id, cost_type, status,
+      order_id, cost_type, status, client_key,
     } = req.body;
 
     if (!type || !amount || !occurred_on) {
@@ -67,24 +68,85 @@ router.post("/:orgId/transactions", async (req, res, next) => {
     const st = status === "planned" ? "planned" : "paid";
     const link = await resolveOrderLink(orgId, type, order_id, cost_type);
 
-    // Кто внёс операцию — берётся из токена авторизации, а не из тела запроса
+    // Кто внёс операцию — берётся из токена авторизации, а не из тела запроса.
+    // Исключение — импорт из Excel админом: колонка «Кто» (who_name) сохраняет исходного сотрудника,
+    // иначе все импортированные деньги «переезжали» на админа и личные остатки не сходились.
     const userId = req.user.id;
+    let whoId = userId;
+    if (req.user.is_admin && req.body.who_name) {
+      const { rows: u } = await pool.query("SELECT id FROM users WHERE lower(name) = lower($1) LIMIT 1", [String(req.body.who_name).trim()]);
+      if (u[0]) whoId = u[0].id;
+    }
+    const key = client_key ? String(client_key).slice(0, 80) : null;
 
+    // ON CONFLICT по client_key: повторная отправка той же формы вернёт уже созданную операцию
     const { rows } = await pool.query(
       `INSERT INTO transactions
          (org_id, account, type, amount, category_id, source, description, occurred_on, occurred_at,
-          who_id, comment, created_by, order_id, cost_type, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+          who_id, comment, created_by, order_id, cost_type, status, client_key)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+       ON CONFLICT (client_key) WHERE client_key IS NOT NULL DO NOTHING
        RETURNING *`,
       [orgId, acc, type, amount, category_id || null, source || null, description || null,
-       occurred_on, occurred_at || null, userId, comment || null, userId,
-       link.order_id, link.cost_type, st]
+       occurred_on, occurred_at || null, whoId, comment || null, userId,
+       link.order_id, link.cost_type, st, key]
     );
+    if (!rows[0]) {
+      const { rows: dup } = await pool.query("SELECT * FROM transactions WHERE client_key = $1", [key]);
+      return res.status(200).json({ ...dup[0], duplicate: true });
+    }
 
     req.app.get("broadcast")(orgId);
     res.status(201).json(rows[0]);
   } catch (err) {
     next(err);
+  }
+});
+
+// Перевод между кассой и банком одной организации: { from: 'cash'|'bank', amount, occurred_on, occurred_at, comment }
+// Создаёт две связанные операции — расход «откуда» и приход «куда» — в одной транзакции БД.
+router.post("/:orgId/transfers", async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    const orgId = req.params.orgId;
+    const from = req.body.from === "bank" ? "bank" : "cash";
+    const to = from === "cash" ? "bank" : "cash";
+    const amount = Number(req.body.amount);
+    const { occurred_on, occurred_at, comment, client_key } = req.body;
+    if (!amount || amount <= 0 || !occurred_on) {
+      return res.status(400).json({ error: "Обязательны: amount, occurred_on" });
+    }
+    const label = from === "cash" ? "Перевод: касса → банк" : "Перевод: банк → касса";
+    const transferId = crypto.randomUUID();
+    const key = client_key ? String(client_key).slice(0, 80) : null;
+
+    await client.query("BEGIN");
+    const ins = (account, type, k) => client.query(
+      `INSERT INTO transactions
+         (org_id, account, type, amount, source, description, occurred_on, occurred_at,
+          who_id, comment, created_by, status, transfer_id, client_key)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$9,'paid',$11,$12)
+       ON CONFLICT (client_key) WHERE client_key IS NOT NULL DO NOTHING
+       RETURNING *`,
+      [orgId, account, type, amount,
+       type === "income" ? label : null, type === "expense" ? label : null,
+       occurred_on, occurred_at || null, req.user.id, comment || null, transferId, k]
+    );
+    const out = await ins(from, "expense", key ? key + ":out" : null);
+    if (!out.rows[0]) {           // эту форму уже отправляли — второй раз не проводим
+      await client.query("ROLLBACK");
+      return res.status(200).json({ duplicate: true });
+    }
+    await ins(to, "income", key ? key + ":in" : null);
+    await client.query("COMMIT");
+
+    req.app.get("broadcast")(orgId);
+    res.status(201).json({ transfer_id: transferId });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    next(err);
+  } finally {
+    client.release();
   }
 });
 
@@ -97,6 +159,9 @@ router.put("/transactions/:id", async (req, res, next) => {
     if (!existing) return res.status(404).json({ error: "Операция не найдена" });
     if (!req.user.is_admin && String(existing.created_by) !== String(req.user.id)) {
       return res.status(403).json({ error: "Редактировать может только тот, кто создал операцию" });
+    }
+    if (existing.transfer_id) {
+      return res.status(400).json({ error: "Перевод нельзя изменить — удалите его и внесите заново" });
     }
 
     const { type, amount, category_id, source, description, occurred_on, occurred_at, comment } = req.body;
@@ -166,7 +231,12 @@ router.delete("/transactions/:id", async (req, res, next) => {
       return res.status(403).json({ error: "Удалить может только тот, кто создал операцию" });
     }
 
-    await pool.query("DELETE FROM transactions WHERE id = $1", [req.params.id]);
+    if (existing.transfer_id) {
+      // обе половины перевода — иначе одна сторона останется и остатки разъедутся
+      await pool.query("DELETE FROM transactions WHERE transfer_id = $1", [existing.transfer_id]);
+    } else {
+      await pool.query("DELETE FROM transactions WHERE id = $1", [req.params.id]);
+    }
     req.app.get("broadcast")(existing.org_id);
     res.status(204).send();
   } catch (err) {
