@@ -16,12 +16,14 @@ const costLabel = key => (COST_TYPES.find(c => c.key === key) || COST_TYPES[4]).
 let orders = [];
 let orderEntities = [];
 let orderOptions = [];       // короткий список для формы операции (виден всем)
-let orderPeriod = "all";     // month | prev | year | all | custom
+let orderPeriod = "all";
+let showOrderDupsOnly = false;   // чекбокс «Показать только повторы» во вкладке «Заказы»     // month | prev | year | all | custom
 let openOrderId = null;      // заказ, открытый в окне деталей
 let openOrderData = null;    // { order, items }
 let detailsFocus = null;     // что показать в деталях: cash | bank | materials | … | costs | null
 let editingOrderId = null;
 let editingItemId = null;
+let itemDups = new Map();
 let itemType = "income";
 let itemStatus = "paid";
 let itemKey = null;          // защита от двойного сохранения оплаты/затраты
@@ -160,18 +162,29 @@ function renderOrders() {
   document.getElementById("okDebtSub").textContent = tot.incomePlanned ? `ожидается ${fmtN(tot.incomePlanned)} ₸` : `${orders.filter(o => orderCalc(o).debt > 0).length} с долгом`;
   document.getElementById("okResult").textContent = fmt(tot.result);
 
+  // Повторы заказов: та же дата, заказчик, название и цена
+  const oDups = groupDuplicates(orders, o => [o.ordered_on, String(o.customer).trim().toLowerCase(),
+    String(o.title).trim().toLowerCase(), num(o.price)].join("|"));
+  if (!oDups.size) showOrderDupsOnly = false;
+  renderDupBanner("ordersDupBanner", oDups.size, "заказ", "заказа", "заказов", "toggleOrderDupsOnly");
+  const shown = showOrderDupsOnly
+    ? orders.filter(o => oDups.has(o.id)).sort((a, b) => oDups.get(a.id) - oDups.get(b.id) || a.id - b.id)
+    : orders;
+  const dupMark = o => oDups.has(o.id) ? `<span class="dup-mark" title="Похоже на повтор: есть такой же заказ">⚠</span> ` : "";
+  const grp = (o, base) => showOrderDupsOnly ? `${base} dup-row dup-g${oDups.get(o.id) % 2}${isGroupStart(shown, o, oDups) ? " dup-first" : ""}` : base;
+
   const empty = orders.length === 0;
   document.getElementById("ordersEmpty").style.display = empty ? "block" : "none";
   document.getElementById("ordersTableWrap").classList.toggle("hidden", empty);
   document.querySelector(".orders-hint").style.display = empty ? "none" : "";
 
-  document.getElementById("ordersBody").innerHTML = orders.map(o => {
+  document.getElementById("ordersBody").innerHTML = shown.map(o => {
     const c = orderCalc(o);
-    return `<tr>
+    return `<tr class="${grp(o, "")}">
       <td class="nowrap">${dateRu(o.ordered_on)}</td>
       <td class="muted nowrap">${escapeHtml(o.legal_entity || "—")}</td>
       <td class="clip">${escapeHtml(o.customer)}</td>
-      <td class="clip"><button class="title-link" onclick="openOrderDetails(${o.id}, null)">${escapeHtml(o.title)}</button>${o.comment ? `<div class="cell-sub">${escapeHtml(o.comment)}</div>` : ""}</td>
+      <td class="clip">${dupMark(o)}<button class="title-link" onclick="openOrderDetails(${o.id}, null)">${escapeHtml(o.title)}</button>${o.comment ? `<div class="cell-sub">${escapeHtml(o.comment)}</div>` : ""}</td>
       <td class="num strong">${amt(o.id, null, o.price)}</td>
       <td class="num">${amt(o.id, "cash", o.paid_cash, "inc")}</td>
       <td class="num">${amt(o.id, "bank", o.paid_bank, "inc")}</td>
@@ -195,11 +208,11 @@ function renderOrders() {
     <td class="num">${fmtN(tot.result)}</td><td class="num">${fmtN(tot.debt)}</td><td></td>
   </tr>`;
 
-  document.getElementById("ordersCards").innerHTML = orders.map(o => {
+  document.getElementById("ordersCards").innerHTML = shown.map(o => {
     const c = orderCalc(o);
-    return `<div class="order-card" onclick="openOrderDetails(${o.id}, null)">
+    return `<div class="${grp(o, "order-card")}" onclick="openOrderDetails(${o.id}, null)">
       <div class="order-card-top">
-        <div class="order-card-title">${escapeHtml(o.title)}</div>
+        <div class="order-card-title">${dupMark(o)}${escapeHtml(o.title)}</div>
         <div class="order-card-price">${fmt(o.price)}</div>
       </div>
       <div class="tx-meta">${escapeHtml(o.customer)} · ${dateRu(o.ordered_on).slice(0, 5)}${o.legal_entity ? " · " + escapeHtml(o.legal_entity) : ""}</div>
@@ -211,6 +224,11 @@ function renderOrders() {
       </div>
     </div>`;
   }).join("");
+}
+
+function toggleOrderDupsOnly(on) {
+  showOrderDupsOnly = !!on;
+  renderOrders();
 }
 
 function debtBadge(orderId, debt) {
@@ -364,6 +382,7 @@ function renderOrderDetails() {
     ? `Показано: <b>${FOCUS_LABELS[detailsFocus]}</b> <button onclick="detailsFocus=null;renderOrderDetails()">Показать всё по заказу ✕</button>`
     : "";
 
+  itemDups = findDuplicateIds(items);
   const shown = items.filter(focusMatch);
   const incomes = shown.filter(t => t.type === "income");
   const expenses = shown.filter(t => t.type === "expense");
@@ -389,7 +408,7 @@ function itemRow(t) {
     : escapeHtml(t.description || costLabel(t.cost_type));
   return `<div class="item-row ${planned ? "planned" : ""}">
     <div class="item-main">
-      <div class="item-title">${title}</div>
+      <div class="item-title">${itemDups.has(t.id) ? `<span class="dup-mark" title="Похоже на повтор: такая же сумма, дата и описание">⚠</span> ` : ""}${title}</div>
       <div class="item-meta">
         <span>${dateRu(t.occurred_on)}</span>
         ${t.type === "expense" ? `<span class="badge">${costLabel(t.cost_type)}</span>` : ""}

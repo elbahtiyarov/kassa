@@ -38,6 +38,21 @@ async function applySchema() {
   const schema = fs.readFileSync(path.join(__dirname, "..", "db", "schema.sql"), "utf8");
   await pool.query(schema);
   console.log("Схема базы проверена/обновлена");
+
+  // Аварийный сброс пароля без консоли: задайте в Railway переменную RESET_PASSWORD
+  // (и при необходимости RESET_LOGIN, по умолчанию admin), перезапустите, войдите —
+  // и удалите переменную, иначе пароль будет сбрасываться при каждом запуске.
+  if (process.env.RESET_PASSWORD) {
+    const bcrypt = require("bcryptjs");
+    const login = (process.env.RESET_LOGIN || "admin").trim();
+    const hash = await bcrypt.hash(process.env.RESET_PASSWORD, 10);
+    const { rowCount } = await pool.query(
+      "UPDATE users SET password_hash = $1 WHERE username = $2 OR phone = $2", [hash, login]
+    );
+    console.log(rowCount
+      ? `Пароль пользователя «${login}» сброшен из RESET_PASSWORD. Удалите эту переменную после входа!`
+      : `RESET_PASSWORD: пользователь «${login}» не найден — проверьте RESET_LOGIN`);
+  }
 }
 
 const PORT = process.env.PORT || 3001;

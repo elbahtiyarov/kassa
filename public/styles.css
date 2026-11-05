@@ -327,7 +327,15 @@ tr:hover .del-btn{opacity:1;}
 .type-toggle button.active-transfer{background:var(--lilac-soft);color:var(--bg);}
 .transfer-hint{background:rgba(124,92,252,.12);border:1px solid rgba(124,92,252,.35);color:var(--text);font-size:12px;padding:8px 10px;border-radius:8px;margin-bottom:12px;}
 .dup-warning{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.4);color:var(--warn);font-size:12px;padding:8px 10px;border-radius:8px;margin-bottom:12px;}
-.dup-banner{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.35);color:var(--warn);font-size:13px;padding:10px 14px;border-radius:10px;margin-bottom:12px;}
+.dup-banner{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.35);color:var(--warn);font-size:13px;padding:10px 14px;border-radius:10px;margin-bottom:12px;align-items:center;gap:14px;flex-wrap:wrap;}
+.dup-check{display:flex;align-items:center;gap:8px;background:rgba(251,191,36,.14);border:1px solid rgba(251,191,36,.45);color:var(--text);font-weight:600;padding:6px 12px;border-radius:8px;cursor:pointer;white-space:nowrap;user-select:none;}
+.dup-check input{width:16px;height:16px;accent-color:var(--warn);cursor:pointer;margin:0;}
+.dup-text{flex:1;min-width:220px;}
+tr.dup-g0 td{background:rgba(251,191,36,.05);}
+tr.dup-g1 td{background:rgba(124,92,252,.06);}
+tr.dup-first td{border-top:2px solid rgba(251,191,36,.45);}
+.dup-card.dup-g0,.order-card.dup-g0{border-color:rgba(251,191,36,.35);}
+.dup-card.dup-first,.order-card.dup-first{margin-top:14px;}
 .dup-mark{color:var(--warn);}
 .save-row{display:flex;gap:8px;}
 .save-row .save-btn{flex:1;}

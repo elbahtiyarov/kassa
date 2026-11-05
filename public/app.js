@@ -9,6 +9,7 @@ let currentType = "expense";
 let currentAccount = "cash"; // 'cash' | 'bank' | 'orders' (вкладка «Заказы», см. orders.js)
 let personFilter = null;     // who_id, чтобы показывать операции только одного человека
 let personBalances = [];
+let showDupsOnly = false;    // чекбокс «Показать только повторы»
 let ws = null;
 let authToken = null;
 let currentUser = null; // {id, name, is_admin}
@@ -28,7 +29,8 @@ async function api(path, options = {}) {
     },
     ...options,
   });
-  if (res.status === 401) {
+  // 401 при входе — это неверный логин/пароль, а не «истекшая сессия»
+  if (res.status === 401 && !path.startsWith("/auth/login")) {
     logout();
     throw new Error("Сессия истекла — войдите заново");
   }
@@ -380,6 +382,8 @@ async function switchOrg(org) {
   currentOrg = org;
   currentAccount = "cash";
   personFilter = null;
+  showDupsOnly = false;
+  showOrderDupsOnly = false;
   renderNav();
   document.getElementById("mobileOrgName").textContent = org.name;
   document.getElementById("desktopOrgName").textContent = org.name;
@@ -403,6 +407,8 @@ function switchAccount(account) {
   if (account === "orders" && !isPartner()) return;
   currentAccount = account;
   personFilter = null;
+  showDupsOnly = false;
+  showOrderDupsOnly = false;
   updateAccountTabsUI();
   if (account === "orders") return loadOrders();
   loadTransactions(currentOrg.id);
@@ -553,9 +559,16 @@ function render() {
     : transactions;
   const filtered = byPerson.filter(inPeriod);
 
-  const sorted = [...filtered].sort((a, b) =>
+  const allSorted = [...filtered].sort((a, b) =>
     (b.occurred_on + (b.occurred_at || "")).localeCompare(a.occurred_on + (a.occurred_at || ""))
   );
+  // Повторы: id → номер группы. В режиме «только повторы» одинаковые операции идут рядом.
+  const dups = findDuplicateIds(allSorted);
+  if (!dups.size) showDupsOnly = false;
+  renderDupBanner("dupBanner", dups.size, "операция", "операции", "операций", "toggleDupsOnly");
+  const sorted = showDupsOnly
+    ? allSorted.filter(t => dups.has(t.id)).sort((a, b) => dups.get(a.id) - dups.get(b.id) || a.id - b.id)
+    : allSorted;
   const income = filtered.filter(t => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
   const expense = filtered.filter(t => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0);
   document.getElementById("kpiIncome").textContent = fmt(income);
@@ -585,14 +598,7 @@ function render() {
     return;
   }
   emptyState.style.display = "none";
-  tableWrap.style.display = "block";
-
-  const dups = findDuplicateIds(sorted);
-  const dupBanner = document.getElementById("dupBanner");
-  dupBanner.style.display = dups.size ? "block" : "none";
-  dupBanner.innerHTML = dups.size
-    ? `⚠ Найдено ${dups.size} ${dups.size === 1 ? "операция" : dups.size < 5 ? "операции" : "операций"}, похожих на повтор (тот же день, сумма и описание) — они отмечены значком ⚠. Если это ошибочный дубль, удалите лишнюю — остаток сойдётся.`
-    : "";
+  tableWrap.style.display = "";  // видимость решает CSS: на телефоне — карточки, на компьютере — таблица
 
   document.getElementById("tableBody").innerHTML = sorted.map(t => {
     const dateFmt = new Date(t.occurred_on).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -608,7 +614,8 @@ function render() {
       + (t.comment && !t.transfer_id ? ` <span style="color:var(--muted);font-style:italic;">· ${escapeHtml(t.comment)}</span>` : "");
     const orderTag = t.order_id ? `<div><span class="order-tag" title="Заказ: ${escapeHtml(t.order_customer || "")}">📋 ${escapeHtml(t.order_title || "заказ")}</span></div>` : "";
     const canEdit = currentUser && (currentUser.is_admin || String(t.created_by) === String(currentUser.id));
-    return `<tr>
+    const grpCls = showDupsOnly ? ` class="dup-row dup-g${dups.get(t.id) % 2}${isGroupStart(sorted, t, dups) ? " dup-first" : ""}"` : "";
+    return `<tr${grpCls}>
       <td>${dateFmt}</td>
       <td style="color:var(--muted)">${t.occurred_at ? t.occurred_at.slice(0,5) : "—"}</td>
       <td>${catCell}${orderTag}</td>
@@ -629,7 +636,7 @@ function render() {
       : t.type === "income"
       ? "Приход · " + escapeHtml(t.source || "—")
       : escapeHtml(t.description || t.category_name || "Расход"));
-    return `<div class="tx-card">
+    return `<div class="tx-card${showDupsOnly ? " dup-card dup-g" + (dups.get(t.id) % 2) + (isGroupStart(sorted, t, dups) ? " dup-first" : "") : ""}">
       <div class="tx-icon" style="background:${color}22;color:${color};">${icon}</div>
       <div class="tx-info">
         <div class="tx-title">${title}</div>
@@ -646,19 +653,53 @@ function render() {
   }).join("");
 }
 
-// Возможные дубли: одинаковые тип, сумма, дата и описание/источник (не переводы)
+// Возможные дубли: одинаковые тип, сумма, дата и описание/источник (не переводы).
+// Возвращает Map: id операции → номер группы одинаковых.
 function findDuplicateIds(list) {
+  return groupDuplicates(list, t => t.transfer_id ? null : [t.type, Number(t.amount), t.occurred_on.slice(0, 10),
+    String(t.type === "income" ? (t.source || "") : (t.description || "")).trim().toLowerCase(), t.category_id || ""].join("|"));
+}
+
+function groupDuplicates(list, keyFn) {
   const groups = new Map();
-  for (const t of list) {
-    if (t.transfer_id) continue;
-    const text = String(t.type === "income" ? (t.source || "") : (t.description || "")).trim().toLowerCase();
-    const k = [t.type, Number(t.amount), t.occurred_on.slice(0, 10), text, t.category_id || ""].join("|");
+  for (const x of list) {
+    const k = keyFn(x);
+    if (k == null) continue;
     if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(t.id);
+    groups.get(k).push(x.id);
   }
-  const ids = new Set();
-  for (const g of groups.values()) if (g.length > 1) g.forEach(id => ids.add(id));
-  return ids;
+  const res = new Map();
+  let n = 0;
+  for (const g of groups.values()) if (g.length > 1) { g.forEach(id => res.set(id, n)); n++; }
+  return res;
+}
+
+function isGroupStart(list, item, dups) {
+  const i = list.indexOf(item);
+  return i > 0 && dups.get(list[i - 1].id) !== dups.get(item.id);
+}
+
+// Плашка «найдено N повторов» с чекбоксом — общая для Кассы, Банка и Заказов
+function renderDupBanner(elId, count, one, few, many, toggleFn) {
+  const el = document.getElementById(elId);
+  if (!count) { el.style.display = "none"; el.innerHTML = ""; return; }
+  const checked = elId === "dupBanner" ? showDupsOnly : showOrderDupsOnly;
+  const word = plural(count, one, few, many);
+  el.style.display = "flex";
+  el.innerHTML = `
+    <label class="dup-check">
+      <input type="checkbox" ${checked ? "checked" : ""} onchange="${toggleFn}(this.checked)">
+      <span>Показать только повторы</span>
+    </label>
+    <span class="dup-text">${checked
+      ? `Показаны ${count} ${word}: одинаковые стоят рядом. Удалите лишнюю (🗑) — остаток сойдётся.`
+      : `⚠ Найдено ${count} ${word}, похожих на повтор (тот же день, сумма и описание) — отмечены значком ⚠.`}</span>`;
+}
+
+function toggleDupsOnly(on) {
+  showDupsOnly = !!on;
+  render();
+  window.scrollTo({ top: document.getElementById("dupBanner").offsetTop - 20, behavior: "smooth" });
 }
 
 function drawDynamicsChart() {
