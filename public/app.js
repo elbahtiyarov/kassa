@@ -148,6 +148,33 @@ async function submitForgotStep2(e) {
 
 // ---------- Управление пользователями (админ) ----------
 
+// Резервная копия всей базы (.sql) — только для администратора
+async function downloadBackup() {
+  const btns = document.querySelectorAll("#backupBtn");
+  btns.forEach(b => { b.disabled = true; b.dataset.label = b.textContent; b.textContent = "⏳ Готовлю копию…"; });
+  try {
+    const res = await fetch("/api/backup", { headers: { Authorization: `Bearer ${authToken}` } });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Ошибка ${res.status}`);
+    }
+    const blob = await res.blob();
+    const name = (res.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/);
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name ? name[1] : "kassa-backup.sql";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    showToast(`Резервная копия скачана (${(blob.size / 1024).toFixed(0)} КБ). Храните её не в GitHub.`);
+  } catch (err) {
+    alert("Не удалось сделать резервную копию: " + err.message);
+  } finally {
+    btns.forEach(b => { b.disabled = false; b.textContent = b.dataset.label || "💾 Резервная копия"; });
+  }
+}
+
 function openUsersModal() {
   document.getElementById("usersOverlay").style.display = "flex";
   loadUsers();
@@ -283,7 +310,8 @@ function renderNav() {
     ${orgRows}
     ${isAdmin ? `<button class="add-org-btn" onclick="showAddOrg(this)">+ организация</button>` : ""}
     <div class="sidebar-footer">
-      ${isAdmin ? `<button class="add-org-btn" style="margin-bottom:8px;" onclick="openUsersModal()">👤 Пользователи</button>` : ""}
+      ${isAdmin ? `<button class="add-org-btn" style="margin-bottom:8px;" onclick="openUsersModal()">👤 Пользователи</button>
+      <button class="add-org-btn" id="backupBtn" style="margin-bottom:8px;" onclick="downloadBackup()" title="Скачать всю базу одним файлом .sql">💾 Резервная копия</button>` : ""}
       <div class="user-chip">
         <div>
           <div class="user-name">${currentUser ? escapeHtml(currentUser.name) : ""}</div>
