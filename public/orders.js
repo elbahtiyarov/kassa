@@ -174,7 +174,7 @@ function renderOrders() {
   const shown = showOrderDupsOnly
     ? orders.filter(o => oDups.has(o.id)).sort((a, b) => oDups.get(a.id) - oDups.get(b.id) || a.id - b.id)
     : orders;
-  const dupMark = o => oDups.has(o.id) ? `<span class="dup-mark" title="Похоже на повтор: есть такой же заказ">⚠</span> ` : "";
+  const dupMark = o => oDups.has(o.id) ? `<span class="dup-mark" title="Похоже на повтор: есть такой же заказ">${ic("warn", "ic-warn")}</span> ` : "";
   const grp = (o, base) => showOrderDupsOnly ? `${base} dup-row dup-g${oDups.get(o.id) % 2}${isGroupStart(shown, o, oDups) ? " dup-first" : ""}` : base;
 
   const empty = orders.length === 0;
@@ -200,7 +200,7 @@ function renderOrders() {
       <td class="num">${amt(o.id, "costs", c.costs, "exp")}${num(o.costs_planned) ? `<div class="cell-sub warn">к оплате ${fmtN(o.costs_planned)}</div>` : ""}</td>
       <td class="num strong" style="color:${c.result < 0 ? "var(--expense)" : "var(--text)"}">${fmtN(c.result)}</td>
       <td class="num">${debtBadge(o.id, c.debt)}</td>
-      <td><button class="del-btn" title="Изменить заказ" onclick="openOrderForm(${o.id})">✎</button></td>
+      <td><button class="del-btn" title="Изменить заказ" onclick="openOrderForm(${o.id})">${ic("edit")}</button></td>
     </tr>`;
   }).join("");
 
@@ -383,7 +383,7 @@ function renderOrderDetails() {
     <div><span>Долг клиента</span><b style="color:${debt > 0 ? "var(--warn)" : "var(--muted)"}">${debt > 0 ? fmt(debt) : debt < 0 ? "переплата " + fmtN(-debt) : "нет"}</b></div>`;
 
   document.getElementById("detailsFocus").innerHTML = detailsFocus
-    ? `Показано: <b>${FOCUS_LABELS[detailsFocus]}</b> <button onclick="detailsFocus=null;renderOrderDetails()">Показать всё по заказу ✕</button>`
+    ? `Показано: <b>${FOCUS_LABELS[detailsFocus]}</b> <button onclick="detailsFocus=null;renderOrderDetails()">Показать всё по заказу ${ic("close", "ic-inline")}</button>`
     : "";
 
   itemDups = findDuplicateIds(items);
@@ -412,19 +412,19 @@ function itemRow(t) {
     : escapeHtml(t.description || costLabel(t.cost_type));
   return `<div class="item-row ${planned ? "planned" : ""}">
     <div class="item-main">
-      <div class="item-title">${itemDups.has(t.id) ? `<span class="dup-mark" title="Похоже на повтор: такая же сумма, дата и описание">⚠</span> ` : ""}${title}</div>
+      <div class="item-title">${itemDups.has(t.id) ? `<span class="dup-mark" title="Похоже на повтор: такая же сумма, дата и описание">${ic("warn", "ic-warn")}</span> ` : ""}${title}</div>
       <div class="item-meta">
         <span>${dateRu(t.occurred_on)}</span>
         ${t.type === "expense" ? `<span class="badge">${costLabel(t.cost_type)}</span>` : ""}
-        <span class="badge">${t.account === "bank" ? "🏦 Банк" : "💵 Касса"}</span>
+        <span class="badge">${t.account === "bank" ? ic("bank", "ic-inline") + " Банк" : ic("cash", "ic-inline") + " Касса"}</span>
         ${t.who_name ? `<span>${escapeHtml(t.who_name)}</span>` : ""}
       </div>
     </div>
     <span class="status ${planned ? "st-planned" : "st-paid"}">${planned ? (t.type === "income" ? "ожидается" : "к оплате") : "оплачено"}</span>
     <div class="item-amount" style="color:${t.type === "income" ? "var(--income)" : "var(--expense)"}">${t.type === "income" ? "+" : "−"}${fmtN(t.amount)}</div>
     <div class="item-actions">
-      ${planned ? `<button class="pay-btn" onclick="payItem(${t.id})" title="Провести в ${t.account === "bank" ? "банк" : "кассу"} сегодняшним числом">✓ Оплачено</button>` : ""}
-      ${canEdit ? `<button class="del-btn" onclick="openItemForm('${t.type}', ${t.id})">✎</button><button class="del-btn" onclick="deleteItem(${t.id})">🗑</button>` : ""}
+      ${planned ? `<button class="pay-btn" onclick="payItem(${t.id})" title="Провести в ${t.account === "bank" ? "банк" : "кассу"} сегодняшним числом">${ic("check", "ic-inline")} Оплачено</button>` : ""}
+      ${canEdit ? `<button class="del-btn" onclick="openItemForm('${t.type}', ${t.id})">${ic("edit")}</button><button class="del-btn" onclick="deleteItem(${t.id})">${ic("trash")}</button>` : ""}
     </div>
   </div>`;
 }

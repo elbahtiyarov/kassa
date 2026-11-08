@@ -11,6 +11,8 @@
   --income:#4ADE9C;
   --expense:#FB7185;
   --warn:#FBBF24;
+  --icon:#A855F7;        /* ярко-фиолетовые иконки */
+  --icon-hover:#C084FC;
 }
 *{box-sizing:border-box;}
 body{
@@ -166,7 +168,7 @@ tr:hover .del-btn{opacity:1;}
 /* Bank dynamics chart */
 .dynamics-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:20px;}
 .dynamics-title{color:var(--muted);font-size:12px;margin-bottom:10px;}
-.dynamics-card svg{width:100%;height:140px;display:block;}
+
 
 /* Header action buttons (Excel export/import) */
 .header-actions{display:flex;gap:8px;margin-left:auto;flex-shrink:0;}
@@ -436,3 +438,152 @@ tr.dup-first td{border-top:2px solid rgba(251,191,36,.45);}
   .recon-overlay{align-items:center;}
 }
 .rc-toolbar .dup-check{font-size:13px;font-weight:500;}
+
+/* ===== Иконки (icons.js) ===== */
+.ic{width:1.2em;height:1.2em;flex-shrink:0;color:var(--icon);vertical-align:-0.24em;transition:color .15s;}
+.ic-inline{width:1.05em;height:1.05em;vertical-align:-0.18em;}
+.ic-lg{width:1em;height:1em;vertical-align:-0.12em;}
+.ic-xl{width:46px;height:46px;stroke-width:1.6;}
+.ic-warn{color:var(--warn);width:1.05em;height:1.05em;vertical-align:-0.18em;}
+.ic-ok{color:var(--income);vertical-align:-0.25em;}
+.ic-spin{animation:icspin .8s linear infinite;}
+@keyframes icspin{to{transform:rotate(360deg);}}
+/* кнопки и вкладки: иконка рядом с текстом */
+.account-tab,.icon-btn,.add-org-btn,.pill-btn,.acc-toggle button,.type-toggle button{display:inline-flex;align-items:center;justify-content:center;gap:7px;}
+.add-org-btn{justify-content:flex-start;}
+.account-tab .ic{width:17px;height:17px;}
+.icon-btn .ic{width:15px;height:15px;}
+.add-org-btn .ic{width:17px;height:17px;}
+/* на фиолетовой заливке иконки белые */
+.account-tab.active .ic,.acc-toggle button.active .ic,.rc-tabs button.active .ic,
+.save-btn .ic,.fab-add-btn .ic,.brand-icon .ic,.mobile-bar-icon .ic{color:#fff;}
+/* на светлой заливке (Расход / Приход / Перевод выбран) — тёмные */
+.type-toggle button[class^="active"] .ic{color:var(--bg);}
+.brand-icon .ic{width:21px;height:21px;}
+.mobile-bar-icon .ic{width:19px;height:19px;}
+.login-brand .brand-icon .ic{width:23px;height:23px;}
+/* маленькие кнопки-иконки (изменить, удалить, закрыть, меню) */
+.del-btn,.org-action,.user-row-del,.close-btn,.menu-btn{display:inline-flex;align-items:center;justify-content:center;padding:5px;border-radius:7px;line-height:1;}
+.del-btn .ic,.org-action .ic,.user-row-del .ic{width:17px;height:17px;}
+.close-btn .ic{width:20px;height:20px;}
+.menu-btn .ic{width:24px;height:24px;}
+.del-btn:hover,.org-action:hover,.user-row-del:hover,.close-btn:hover,.menu-btn:hover{background:rgba(168,85,247,.14);}
+.del-btn:hover .ic,.org-action:hover .ic,.close-btn:hover .ic,.menu-btn:hover .ic{color:var(--icon-hover);}
+button[onclick^="removeTx"]:hover .ic,button[onclick^="deleteItem"]:hover .ic,button[onclick^="deleteOrgPrompt"]:hover .ic,button[onclick^="deleteUser"]:hover .ic{color:var(--expense);}
+.icon-btn:hover .ic,.add-org-btn:hover .ic,.pill-btn:hover .ic{color:var(--icon-hover);}
+.order-tag .ic,.badge .ic{width:13px;height:13px;vertical-align:-0.15em;}
+.rep-card-title{display:flex;align-items:center;gap:8px;}
+.rep-card-title .ic{width:20px;height:20px;}
+.recon-btn .ic{width:16px;height:16px;}
+.pay-btn{display:inline-flex;align-items:center;gap:4px;}
+.pay-btn .ic{color:var(--income);}
+.detail-focus button .ic{width:13px;height:13px;}
+.add-org-form button .ic{width:16px;height:16px;}
+@media(max-width:767px){
+  .account-tabs{display:grid;grid-template-columns:repeat(auto-fit,minmax(74px,1fr));gap:6px;}
+  .account-tab{flex-direction:column;gap:4px;padding:8px 4px;font-size:12px;}
+  .account-tab .ic{width:19px;height:19px;}
+}
+
+/* ===== Новая компоновка главного экрана ===== */
+.main-header{margin-bottom:18px;}
+.main-title-h{font-size:24px;font-weight:700;letter-spacing:-.01em;}
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px;}
+.toolbar .account-tabs{margin-bottom:0;}
+.toolbar .orders-filters{margin-bottom:0;}
+.account-tab{padding:9px 16px;font-size:14px;}
+
+/* карточки сумм */
+.kpi-grid{gap:14px;margin-bottom:16px;}
+.kpi-card,.kpi-balance{padding:16px 18px;}
+.kpi-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.kpi-top .kpi-label{margin:0;font-size:13px;}
+.kpi-ic{width:32px;height:32px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;background:rgba(168,85,247,.14);}
+.kpi-ic .ic{width:18px;height:18px;}
+.kpi-ic-in .ic{color:var(--income);} .kpi-ic-in{background:rgba(74,222,156,.12);}
+.kpi-ic-out .ic{color:var(--expense);} .kpi-ic-out{background:rgba(251,113,133,.12);}
+.kpi-ic-bal{background:rgba(255,255,255,.12);} .kpi-ic-bal .ic{color:#fff;}
+.kpi-value{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.01em;}
+.kpi-balance .kpi-value{font-size:28px;}
+.kpi-sub{font-size:12px;margin-top:4px;}
+.kpi-balance .kpi-sub{color:var(--lilac-soft);}
+
+/* график + сотрудники */
+.overview{display:grid;grid-template-columns:1fr;gap:14px;margin-bottom:22px;}
+.dynamics-card{margin:0;padding:16px 18px 10px;min-width:0;}
+.dyn-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:6px;}
+.dynamics-title{font-size:14px;font-weight:600;color:var(--text);margin:0;}
+.dyn-meta{display:flex;align-items:baseline;gap:10px;}
+.dyn-now{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;}
+.dyn-change{font-size:12px;padding:2px 8px;border-radius:20px;}
+.dyn-change.up{color:var(--income);background:rgba(74,222,156,.1);}
+.dyn-change.down{color:var(--expense);background:rgba(251,113,133,.1);}
+.dyn-box{position:relative;width:100%;}
+.dyn-svg{display:block;}
+.dyn-box{overflow:hidden;}
+.dyn-grid{stroke:var(--border);stroke-width:1;opacity:.6;}
+.dyn-zero{stroke:var(--muted);stroke-width:1;stroke-dasharray:4 4;opacity:.7;}
+.dyn-ylab,.dyn-xlab{fill:var(--muted);font-size:11px;font-family:inherit;font-variant-numeric:tabular-nums;}
+.dyn-line{fill:none;stroke:#A855F7;stroke-width:2.4;stroke-linejoin:round;stroke-linecap:round;}
+.dyn-dot{fill:var(--surface);stroke:#A855F7;stroke-width:1.6;}
+.dyn-dot.neg{stroke:var(--expense);}
+.dyn-last{fill:#A855F7;stroke:var(--surface);stroke-width:2.5;}
+.dyn-cross{stroke:var(--lilac-soft);stroke-width:1;stroke-dasharray:3 3;}
+.dyn-tip{position:absolute;pointer-events:none;background:var(--surface2);border:1px solid var(--lilac-deep);border-radius:9px;padding:7px 10px;font-size:12px;box-shadow:0 8px 24px rgba(0,0,0,.45);white-space:nowrap;z-index:2;}
+.tip-date{color:var(--muted);font-size:11px;}
+.tip-bal{font-size:14px;font-weight:700;}
+.tip-in{color:var(--income);} .tip-out{color:var(--expense);}
+.dyn-empty{height:150px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--muted);font-size:14px;}
+.dyn-empty .ic{width:38px;height:38px;opacity:.55;}
+
+.person-panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 14px 8px;min-width:0;}
+.pp-head{font-size:14px;font-weight:600;margin-bottom:8px;display:flex;flex-direction:column;gap:2px;}
+.pp-hint{font-size:11px;color:var(--muted);font-weight:400;}
+.person-row{display:flex;align-items:center;gap:10px;padding:9px 8px;border-radius:9px;border:1px solid transparent;}
+.person-row.clickable{cursor:pointer;}
+.person-row.clickable:hover{background:var(--surface2);}
+.person-row.active{background:rgba(124,92,252,.14);border-color:var(--lilac-deep);}
+.person-avatar{width:32px;height:32px;border-radius:50%;background:rgba(168,85,247,.18);color:#C084FC;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;}
+.person-main{flex:1;min-width:0;}
+.person-name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.person-detail{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;}
+.person-balance{font-size:15px;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;}
+
+/* заголовок таблицы операций + поиск */
+.ops-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;}
+.ops-title{font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;}
+.ops-count{font-size:12px;font-weight:600;color:var(--lilac-soft);background:rgba(124,92,252,.16);padding:2px 9px;border-radius:20px;}
+.search-box{position:relative;flex:1;max-width:340px;min-width:200px;}
+.search-box .ic{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:17px;height:17px;}
+.search-box input{width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:13px;padding:9px 12px 9px 36px;border-radius:9px;outline:none;transition:border-color .15s;}
+.search-box input:focus{border-color:var(--lilac);}
+.ops-summary{font-size:13px;color:var(--muted);margin:-2px 2px 10px;}
+.link-btn{background:none;color:var(--lilac-soft);font-size:12px;text-decoration:underline;padding:0 4px;}
+
+/* таблица операций */
+.table-wrap table thead th{font-size:12px;letter-spacing:.02em;}
+.table-wrap tbody tr{transition:background .12s;}
+.table-wrap tbody tr:hover td{background:rgba(124,92,252,.06);}
+.table-wrap td:nth-child(6){font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap;}
+
+@media(min-width:1100px){
+  .overview.with-people{grid-template-columns:minmax(0,2.2fr) minmax(260px,1fr);}
+}
+@media(max-width:767px){
+  .toolbar{flex-direction:column;align-items:stretch;}
+  .search-box{max-width:none;}
+  .kpi-value{font-size:22px;}
+  .kpi-balance .kpi-value{font-size:24px;}
+}
+@media(max-width:767px){
+  .toolbar{display:block;}
+  .toolbar .account-tabs{margin-bottom:10px;}
+  .account-tab{flex-direction:column;gap:4px;padding:9px 4px;font-size:12px;}
+  .kpi-grid{grid-template-columns:1fr 1fr;gap:10px;}
+  .kpi-grid .kpi-balance{grid-column:1 / -1;}
+  .kpi-card,.kpi-balance{padding:13px 14px;}
+  .kpi-card .kpi-value{font-size:18px;}
+  .kpi-card .kpi-sub{font-size:11px;}
+  .kpi-ic{width:28px;height:28px;}
+  .ops-head .search-box{min-width:0;flex-basis:100%;}
+}

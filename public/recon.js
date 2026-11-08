@@ -255,7 +255,7 @@ function resetReconFile() {
 function renderReconUpload(error) {
   document.getElementById("reconBody").innerHTML = `
     <div class="recon-upload" id="reconDrop">
-      <div class="recon-upload-icon">📄</div>
+      <div class="recon-upload-icon">${ic("file", "ic-xl")}</div>
       <div class="recon-upload-title">Загрузите выписку банка в Excel</div>
       <div class="recon-upload-sub">Kaspi Business: «Выписка по счёту» → период → скачать в Excel (.xlsx).<br>
         Программа сравнит её с вкладкой «Банк» организации <b>${escapeHtml(currentOrg.name)}</b> и покажет, что не сходится.
@@ -352,7 +352,7 @@ function renderRecon() {
         входящий остаток ${fmt(m.opening)}${m.closing !== null ? ` · исходящий ${fmt(m.closing)}` : ""}</span></div>
       <button class="pill-btn" onclick="resetReconFile()">Другая выписка</button>
     </div>
-    ${holderWarn ? `<div class="rep-hint">⚠ Выписка на «${escapeHtml(m.holder)}», а открыта организация «${escapeHtml(currentOrg.name)}». Убедитесь, что это её счёт.</div>` : ""}
+    ${holderWarn ? `<div class="rep-hint">${ic("warn", "ic-warn")} Выписка на «${escapeHtml(m.holder)}», а открыта организация «${escapeHtml(currentOrg.name)}». Убедитесь, что это её счёт.</div>` : ""}
 
     <div class="rc-range">Сверяю с <input type="date" id="rcStart" value="${r.start}" min="${m.from}" max="${m.to}" onchange="setReconRange()">
       по <input type="date" id="rcEnd" value="${r.end}" min="${m.from}" max="${m.to}" onchange="setReconRange()">
@@ -361,10 +361,10 @@ function renderRecon() {
     <div class="rc-cards">
       <div class="rc-card"><span>Остаток по выписке на ${dateRu(r.end)}</span><b>${rcF(r.stmtClosing)}</b></div>
       <div class="rc-card"><span>В программе на ${dateRu(r.end)}</span><b>${rcF(r.progClosing)}</b></div>
-      <div class="rc-card ${ok ? "rc-ok" : "rc-bad"}"><span>Разница</span><b>${ok ? "✓ Сходится" : (r.diffEnd > 0 ? "+" : "−") + rcN(Math.abs(r.diffEnd)) + " ₸"}</b>
+      <div class="rc-card ${ok ? "rc-ok" : "rc-bad"}"><span>Разница</span><b>${ok ? ic("checkCircle", "ic-lg") + " Сходится" : (r.diffEnd > 0 ? "+" : "−") + rcN(Math.abs(r.diffEnd)) + " ₸"}</b>
         <i>${ok ? "остатки совпадают до тенге" : r.diffEnd > 0 ? "в программе больше, чем на счёте" : "в программе меньше, чем на счёте"}</i></div>
     </div>
-    ${r.closingCheck ? `<div class="rep-hint">⚠ Сумма операций в файле не сходится с его «Исходящим остатком» на ${rcN(Math.abs(r.closingCheck))} ₸ — возможно, выписка выгружена не целиком.</div>` : ""}
+    ${r.closingCheck ? `<div class="rep-hint">${ic("warn", "ic-warn")} Сумма операций в файле не сходится с его «Исходящим остатком» на ${rcN(Math.abs(r.closingCheck))} ₸ — возможно, выписка выгружена не целиком.</div>` : ""}
 
     ${ok ? "" : `<div class="rc-explain">
       <div class="rc-explain-title">Из чего складывается разница</div>
@@ -384,7 +384,7 @@ function renderRecon() {
 function renderReconTab(shifted, groups, exact) {
   const r = reconRes;
   if (reconTab === "missingProg") {
-    if (!r.missingInProg.length) return `<div class="detail-empty">Все операции из выписки есть в программе 👍</div>`;
+    if (!r.missingInProg.length) return `<div class="detail-empty">${ic("checkCircle", "ic-ok")} Все операции из выписки есть в программе</div>`;
     const selected = r.missingInProg.filter(s => reconChoice[s.key].checked);
     const selSum = selected.reduce((a, s) => a + (s.type === "income" ? 1 : -1) * s.cents, 0);
     const catNames = [...new Set([...categories.map(c => c.name), "Комиссии банка", "Налоги и взносы", "Перевод на карту"])];
@@ -420,9 +420,9 @@ function renderReconTab(shifted, groups, exact) {
   }
 
   if (reconTab === "missingBank") {
-    if (!r.missingInBank.length) return `<div class="detail-empty">Все записи программы нашлись в выписке 👍</div>`;
+    if (!r.missingInBank.length) return `<div class="detail-empty">${ic("checkCircle", "ic-ok")} Все записи программы нашлись в выписке</div>`;
     return `
-      <div class="rc-hint">Эти записи есть во вкладке «Банк», но по счёту таких операций не было. Частые причины: деньги были наличными (перенесите в «Кассу» через ✎),
+      <div class="rc-hint">Эти записи есть во вкладке «Банк», но по счёту таких операций не было. Частые причины: деньги были наличными (перенесите в «Кассу» через ${ic("edit", "ic-inline")}),
         неверная дата или сумма, повтор или запись «для выравнивания». Исправьте или удалите — сверка пересчитается сама.</div>
       <div class="rep-table-wrap"><table class="rep-table rc-table">
         <thead><tr><th>Дата</th><th class="num">Сумма</th><th>Запись в программе</th><th>Кто внёс</th><th></th></tr></thead>
@@ -431,7 +431,7 @@ function renderReconTab(shifted, groups, exact) {
           <td class="num">${rcSigned(p.type, p.cents)}</td>
           <td>${escapeHtml(p.text || "—")}${p.t.category_name ? ` <span class="muted small">· ${escapeHtml(p.t.category_name)}</span>` : ""}${p.t.comment ? `<div class="muted small">${escapeHtml(p.t.comment)}</div>` : ""}</td>
           <td class="muted">${escapeHtml(p.who)}</td>
-          <td class="nowrap"><button class="del-btn" style="opacity:1" title="Изменить" onclick="editTx(${p.id})">✎</button><button class="del-btn" style="opacity:1" title="Удалить" onclick="removeTx(${p.id})">🗑</button></td>
+          <td class="nowrap"><button class="del-btn" style="opacity:1" title="Изменить" onclick="editTx(${p.id})">${ic("edit")}</button><button class="del-btn" style="opacity:1" title="Удалить" onclick="removeTx(${p.id})">${ic("trash")}</button></td>
         </tr>`).join("")}</tbody>
       </table></div>`;
   }
@@ -447,7 +447,7 @@ function renderReconTab(shifted, groups, exact) {
       <div class="rep-table-wrap"><table class="rep-table rc-table"><thead><tr><th>В программе</th><th>В выписке</th><th></th></tr></thead>
       <tbody>${list.map(m => row(m, noteFn(m))).join("")}</tbody></table></div>` : "";
     return (shifted.length || groups.length || exact.length) ? `
-      ${table("⚠ Совпало по сумме, но дата отличается", shifted, m => `в программе на ${Math.abs(m.shift)} дн. ${m.shift > 0 ? "позже" : "раньше"}`,
+      ${table(ic("warn", "ic-warn") + " Совпало по сумме, но дата отличается", shifted, m => `в программе на ${Math.abs(m.shift)} дн. ${m.shift > 0 ? "позже" : "раньше"}`,
         "Сумма та же, но день другой. Обычно это одна и та же операция, внесённая другим числом. Проверьте, особенно если на счёте было несколько одинаковых сумм.")}
       ${table("Одна запись = несколько операций", groups, m => m.stmt.length > 1 ? `${m.stmt.length} операций в банке одной записью` : `${m.prog.length} записей = 1 операция в банке`)}
       ${table("Совпало точно", exact, () => "")}` : `<div class="detail-empty">Совпадений нет</div>`;

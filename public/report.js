@@ -87,9 +87,9 @@ function renderReport() {
     <div class="rep-head">Отчёт: <b>${scopeName}</b>, ${periodLabel()} · операций: ${cash.ops + bank.ops}</div>
 
     <div class="rep-cards">
-      ${card("💵", "Наличные (касса)", cash, "rc-cash")}
-      ${card("🏦", "Безнал (банк)", bank, "rc-bank")}
-      ${card("Σ", "Всего", { income: incomeAll, expense: expenseAll, closing: cash.closing + bank.closing }, "rc-all")}
+      ${card(ic("cash"), "Наличные (касса)", cash, "rc-cash")}
+      ${card(ic("bank"), "Безнал (банк)", bank, "rc-bank")}
+      ${card(ic("sigma"), "Всего", { income: incomeAll, expense: expenseAll, closing: cash.closing + bank.closing }, "rc-all")}
     </div>
 
     <div class="rep-shares">
@@ -97,20 +97,20 @@ function renderReport() {
       <div><span>Расход: наличными ${pct(cash.expense, expenseAll)}% · безнал ${pct(bank.expense, expenseAll)}%</span>${splitBar(cash.expense, bank.expense)}</div>
     </div>
 
-    ${wSum ? `<div class="rep-hint">💡 В приходе наличными ${fmt(wSum)} — похоже, это деньги, снятые со своего счёта
+    ${wSum ? `<div class="rep-hint">${ic("bulb", "ic-inline")} В приходе наличными ${fmt(wSum)} — похоже, это деньги, снятые со своего счёта
       (${withdrawals.map(w => "«" + escapeHtml(w.source) + "»").join(", ")}). Это не выручка, а перемещение денег: такие суммы лучше вносить
-      как «↔ Перевод» (банк → касса). Тогда они не будут раздувать приход наличными и расход по безналу.</div>` : ""}
+      как «Перевод» (банк → касса). Тогда они не будут раздувать приход наличными и расход по безналу.</div>` : ""}
 
     <div class="rep-section">Движение денег</div>
     <div class="rep-table-wrap"><table class="rep-table">
-      <thead><tr><th></th><th class="num">💵 Наличные</th><th class="num">🏦 Безнал</th><th class="num">Всего</th></tr></thead>
+      <thead><tr><th></th><th class="num">${ic("cash", "ic-inline")} Наличные</th><th class="num">${ic("bank", "ic-inline")} Безнал</th><th class="num">Всего</th></tr></thead>
       <tbody>
         <tr class="muted-row"><td>Остаток на начало</td><td class="num">${fmtN(cash.opening)}</td><td class="num">${fmtN(bank.opening)}</td><td class="num">${fmtN(cash.opening + bank.opening)}</td></tr>
         <tr><td>Приход</td><td class="num inc">+${fmtN(cash.income)}</td><td class="num inc">+${fmtN(bank.income)}</td><td class="num inc">+${fmtN(incomeAll)}</td></tr>
         <tr><td>Расход</td><td class="num exp">−${fmtN(cash.expense)}</td><td class="num exp">−${fmtN(bank.expense)}</td><td class="num exp">−${fmtN(expenseAll)}</td></tr>
         ${transfersCB || transfersBC ? `
-        <tr><td>↔ Переводы касса → банк</td><td class="num">${sgn(-transfersCB)}</td><td class="num">${sgn(transfersCB)}</td><td class="num muted">—</td></tr>
-        <tr><td>↔ Переводы банк → касса</td><td class="num">${sgn(transfersBC)}</td><td class="num">${sgn(-transfersBC)}</td><td class="num muted">—</td></tr>` : ""}
+        <tr><td>${ic("transfer", "ic-inline")} Переводы касса → банк</td><td class="num">${sgn(-transfersCB)}</td><td class="num">${sgn(transfersCB)}</td><td class="num muted">—</td></tr>
+        <tr><td>${ic("transfer", "ic-inline")} Переводы банк → касса</td><td class="num">${sgn(transfersBC)}</td><td class="num">${sgn(-transfersBC)}</td><td class="num muted">—</td></tr>` : ""}
         <tr class="total-row"><td>Остаток на конец</td><td class="num">${fmtN(cash.closing)}</td><td class="num">${fmtN(bank.closing)}</td><td class="num">${fmtN(cash.closing + bank.closing)}</td></tr>
       </tbody>
     </table></div>`;
@@ -121,7 +121,7 @@ function renderReport() {
       <div class="rep-section">По организациям</div>
       <div class="rep-table-wrap"><table class="rep-table">
         <thead>
-          <tr class="group-row"><th></th><th colspan="3" class="grp">💵 Наличные</th><th colspan="3" class="grp">🏦 Безнал</th><th></th></tr>
+          <tr class="group-row"><th></th><th colspan="3" class="grp">${ic("cash", "ic-inline")} Наличные</th><th colspan="3" class="grp">${ic("bank", "ic-inline")} Безнал</th><th></th></tr>
           <tr><th>Организация</th><th class="num">Приход</th><th class="num">Расход</th><th class="num">Остаток</th><th class="num">Приход</th><th class="num">Расход</th><th class="num">Остаток</th><th class="num">Всего остаток</th></tr>
         </thead>
         <tbody>${orgs.map(([id, name]) => {
@@ -139,7 +139,7 @@ function renderReport() {
   html += `
     <div class="rep-section">Расходы по категориям</div>
     ${catRows.length ? `<div class="rep-table-wrap"><table class="rep-table">
-      <thead><tr><th>Категория</th><th class="num">💵 Наличные</th><th class="num">🏦 Безнал</th><th class="num">Всего</th><th class="num">Доля</th><th class="bar-col">Нал / безнал</th></tr></thead>
+      <thead><tr><th>Категория</th><th class="num">${ic("cash", "ic-inline")} Наличные</th><th class="num">${ic("bank", "ic-inline")} Безнал</th><th class="num">Всего</th><th class="num">Доля</th><th class="bar-col">Нал / безнал</th></tr></thead>
       <tbody>${catRows.map(c => `<tr>
         <td><span class="cat-dot" style="background:${c.color || "var(--muted)"}"></span>${escapeHtml(c.name)} <span class="muted small">· ${c.ops}</span></td>
         <td class="num">${c.cash ? fmtN(c.cash) : "—"}</td><td class="num">${c.bank ? fmtN(c.bank) : "—"}</td>
@@ -152,7 +152,7 @@ function renderReport() {
   html += `
     <div class="rep-section">Приходы по источникам</div>
     ${srcRows.length ? `<div class="rep-table-wrap"><table class="rep-table">
-      <thead><tr><th>Источник</th><th class="num">💵 Наличные</th><th class="num">🏦 Безнал</th><th class="num">Всего</th><th class="bar-col">Нал / безнал</th></tr></thead>
+      <thead><tr><th>Источник</th><th class="num">${ic("cash", "ic-inline")} Наличные</th><th class="num">${ic("bank", "ic-inline")} Безнал</th><th class="num">Всего</th><th class="bar-col">Нал / безнал</th></tr></thead>
       <tbody>${srcRows.map(s => `<tr>
         <td>${escapeHtml(s.name)} <span class="muted small">· ${s.ops}</span></td>
         <td class="num">${s.cash ? fmtN(s.cash) : "—"}</td><td class="num">${s.bank ? fmtN(s.bank) : "—"}</td>

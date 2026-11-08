@@ -12,7 +12,7 @@
 <div class="login-overlay" id="loginScreen">
   <div class="login-card">
     <div class="login-brand">
-      <div class="brand-icon">🏢</div>
+      <div class="brand-icon"><i data-ic="logo"></i></div>
     </div>
     <div class="login-title">Касса</div>
     <div class="login-sub">Войдите, чтобы продолжить</div>
@@ -66,10 +66,10 @@
   <div class="main">
     <div class="mobile-bar">
       <div class="mobile-bar-left">
-        <div class="mobile-bar-icon">🏢</div>
+        <div class="mobile-bar-icon"><i data-ic="logo"></i></div>
         <div class="mobile-org-name" id="mobileOrgName">—</div>
       </div>
-      <button class="menu-btn" onclick="openDrawer()">☰</button>
+      <button class="menu-btn" onclick="openDrawer()"><i data-ic="menu"></i></button>
     </div>
 
     <div class="main-inner">
@@ -79,19 +79,20 @@
           <div class="main-title-sub" id="mainTitleSub">Касса и учёт операций</div>
         </div>
         <div class="header-actions">
-          <button class="icon-btn" onclick="exportCurrentView()" title="Скачать таблицу в Excel">⬇ Excel</button>
-          <button class="icon-btn" id="importBtn" onclick="document.getElementById('importFile').click()" title="Загрузить операции из Excel">⬆ Excel</button>
+          <button class="icon-btn" onclick="exportCurrentView()" title="Скачать таблицу в Excel"><i data-ic="download"></i> Excel</button>
+          <button class="icon-btn" id="importBtn" onclick="document.getElementById('importFile').click()" title="Загрузить операции из Excel"><i data-ic="upload"></i> Excel</button>
           <input type="file" id="importFile" accept=".xlsx,.xls" style="display:none;" onchange="handleImportFile(event)">
-          <button class="icon-btn recon-btn" id="reconBtn" onclick="openRecon()" style="display:none;" title="Сравнить вкладку «Банк» с выпиской банка">🔍 Сверка с выпиской</button>
+          <button class="icon-btn recon-btn" id="reconBtn" onclick="openRecon()" style="display:none;" title="Сравнить вкладку «Банк» с выпиской банка"><i data-ic="recon"></i> Сверка с выпиской</button>
           <input type="file" id="reconFile" accept=".xlsx,.xls" style="display:none;" onchange="handleReconFile(event)">
         </div>
       </div>
 
+      <div class="toolbar">
       <div class="account-tabs">
-        <button class="account-tab active" id="tabCash" onclick="switchAccount('cash')">💵 Касса</button>
-        <button class="account-tab" id="tabBank" onclick="switchAccount('bank')">🏦 Банк</button>
-        <button class="account-tab" id="tabOrders" onclick="switchAccount('orders')" style="display:none;">📋 Заказы</button>
-        <button class="account-tab" id="tabReport" onclick="switchAccount('report')" style="display:none;">📊 Отчёт</button>
+        <button class="account-tab active" id="tabCash" onclick="switchAccount('cash')"><i data-ic="cash"></i> Касса</button>
+        <button class="account-tab" id="tabBank" onclick="switchAccount('bank')"><i data-ic="bank"></i> Банк</button>
+        <button class="account-tab" id="tabOrders" onclick="switchAccount('orders')" style="display:none;"><i data-ic="orders"></i> Заказы</button>
+        <button class="account-tab" id="tabReport" onclick="switchAccount('report')" style="display:none;"><i data-ic="report"></i> Отчёт</button>
       </div>
 
       <!-- Период — общий для «Касса», «Банк» и «Заказы» -->
@@ -108,6 +109,7 @@
           </div>
           <select id="ordEntity" class="filter-select" onchange="loadOrders()" style="display:none;"></select>
         </div>
+      </div><!-- /toolbar -->
 
       <!-- ===== Вкладка «Отчёт»: наличные / безнал ===== -->
       <div id="reportView" style="display:none;">
@@ -167,29 +169,45 @@
 
       <div class="kpi-grid">
         <div class="kpi-card">
-          <div class="kpi-label">Получено</div>
+          <div class="kpi-top"><span class="kpi-label">Получено</span><span class="kpi-ic kpi-ic-in"><i data-ic="arrowDown"></i></span></div>
           <div class="kpi-value" id="kpiIncome" style="color:var(--income);">0 ₸</div>
+          <div class="kpi-sub" id="kpiIncomeSub"></div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-label">Потрачено</div>
+          <div class="kpi-top"><span class="kpi-label">Потрачено</span><span class="kpi-ic kpi-ic-out"><i data-ic="arrowUp"></i></span></div>
           <div class="kpi-value" id="kpiExpense" style="color:var(--expense);">0 ₸</div>
+          <div class="kpi-sub" id="kpiExpenseSub"></div>
         </div>
         <div class="kpi-balance">
-          <div class="kpi-label" id="kpiBalanceLabel">Остаток</div>
+          <div class="kpi-top"><span class="kpi-label" id="kpiBalanceLabel">Остаток</span><span class="kpi-ic kpi-ic-bal"><i data-ic="wallet"></i></span></div>
           <div class="kpi-value" id="kpiBalance">0 ₸</div>
+          <div class="kpi-sub" id="kpiBalanceSub"></div>
         </div>
       </div>
 
-      <div id="personBalances" class="person-balances"></div>
-      <div id="dynamicsChart" class="dynamics-card" style="display:none;">
-        <div class="dynamics-title">Динамика остатка</div>
-        <svg id="dynamicsSvg" viewBox="0 0 600 160" preserveAspectRatio="none"></svg>
+      <div class="overview" id="overview">
+        <div id="dynamicsChart" class="dynamics-card">
+          <div class="dyn-head">
+            <div class="dynamics-title">Динамика остатка</div>
+            <div class="dyn-meta" id="dynMeta"></div>
+          </div>
+          <div class="dyn-box" id="dynBox"></div>
+        </div>
+        <div id="personBalances" class="person-panel"></div>
       </div>
 
       <div id="personFilterBar" class="person-filter-bar" style="display:none;"></div>
 
       <div id="errorState" class="error-state" style="display:none;"></div>
       <div id="loadingState" class="loading">Загрузка…</div>
+      <div class="ops-head">
+        <div class="ops-title">Операции <span class="ops-count" id="opsCount"></span></div>
+        <div class="search-box">
+          <i data-ic="search"></i>
+          <input type="search" id="opsSearch" placeholder="Поиск: описание, сумма, кто…" oninput="onOpsSearch()" autocomplete="off">
+        </div>
+      </div>
+      <div class="ops-summary" id="opsSummary" style="display:none;"></div>
       <div id="dupBanner" class="dup-banner" style="display:none;"></div>
       <div id="emptyState" class="empty-state" style="display:none;">
         Пока нет операций — добавьте первую через кнопку «Добавить операцию»
@@ -216,17 +234,17 @@
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-header">
       <div class="modal-title" id="modalTitle">Новая операция · <span id="modalOrgName">—</span></div>
-      <button class="close-btn" onclick="closeForm()">✕</button>
+      <button class="close-btn" onclick="closeForm()"><i data-ic="close"></i></button>
     </div>
     <form id="txForm">
       <div class="acc-toggle" id="accToggle">
-        <button type="button" id="fAccCash" onclick="setFormAccount('cash')">💵 Касса</button>
-        <button type="button" id="fAccBank" onclick="setFormAccount('bank')">🏦 Банк</button>
+        <button type="button" id="fAccCash" onclick="setFormAccount('cash')"><i data-ic="cash"></i> Касса</button>
+        <button type="button" id="fAccBank" onclick="setFormAccount('bank')"><i data-ic="bank"></i> Банк</button>
       </div>
       <div class="type-toggle type-toggle-3">
         <button type="button" id="btnExpense" class="active-expense" onclick="setType('expense')">Расход</button>
         <button type="button" id="btnIncome" onclick="setType('income')">Приход</button>
-        <button type="button" id="btnTransfer" onclick="setType('transfer')">↔ Перевод</button>
+        <button type="button" id="btnTransfer" onclick="setType('transfer')"><i data-ic="transfer"></i> Перевод</button>
       </div>
       <div class="transfer-hint" id="transferHint" style="display:none;"></div>
       <div class="field">
@@ -276,7 +294,7 @@
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-header">
       <div class="modal-title">Пользователи</div>
-      <button class="close-btn" onclick="closeUsersModal()">✕</button>
+      <button class="close-btn" onclick="closeUsersModal()"><i data-ic="close"></i></button>
     </div>
     <div id="usersList"></div>
     <div class="field-row" style="margin-top:16px;">
@@ -309,7 +327,7 @@
   <div class="modal recon-modal" onclick="event.stopPropagation()">
     <div class="modal-header">
       <div class="modal-title" id="reconTitle">Сверка с выпиской</div>
-      <button class="close-btn" onclick="closeRecon()">✕</button>
+      <button class="close-btn" onclick="closeRecon()"><i data-ic="close"></i></button>
     </div>
     <div id="reconBody"></div>
   </div>
@@ -320,7 +338,7 @@
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-header">
       <div class="modal-title" id="orderModalTitle">Новый заказ</div>
-      <button class="close-btn" onclick="closeOrderForm()">✕</button>
+      <button class="close-btn" onclick="closeOrderForm()"><i data-ic="close"></i></button>
     </div>
     <form id="orderForm">
       <div class="field-row">
@@ -346,7 +364,7 @@
         <div class="modal-title" id="detailsTitle">—</div>
         <div class="modal-sub" id="detailsSub"></div>
       </div>
-      <button class="close-btn" onclick="closeOrderDetails()">✕</button>
+      <button class="close-btn" onclick="closeOrderDetails()"><i data-ic="close"></i></button>
     </div>
     <div class="detail-summary" id="detailsSummary"></div>
     <div class="detail-focus" id="detailsFocus"></div>
@@ -354,7 +372,7 @@
     <div class="detail-actions">
       <button class="pill-btn income" onclick="openItemForm('income')">+ Оплата клиента</button>
       <button class="pill-btn expense" onclick="openItemForm('expense')">+ Затрата</button>
-      <button class="pill-btn" onclick="editOpenOrder()">✎ Изменить заказ</button>
+      <button class="pill-btn" onclick="editOpenOrder()"><i data-ic="edit"></i> Изменить заказ</button>
     </div>
   </div>
 </div>
@@ -364,7 +382,7 @@
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-header">
       <div class="modal-title" id="itemModalTitle">—</div>
-      <button class="close-btn" onclick="closeItemForm()">✕</button>
+      <button class="close-btn" onclick="closeItemForm()"><i data-ic="close"></i></button>
     </div>
     <form id="itemForm">
       <div class="type-toggle">
@@ -380,7 +398,7 @@
         <div class="field"><label id="iDateLabel">Дата</label><input type="date" id="iDate" required></div>
         <div class="field">
           <label>Касса / счёт</label>
-          <select id="iAccount"><option value="cash">💵 Касса (наличные)</option><option value="bank">🏦 Банк</option></select>
+          <select id="iAccount"><option value="cash">Касса (наличные)</option><option value="bank">Банк (безнал)</option></select>
         </div>
       </div>
       <div class="field">
@@ -404,6 +422,7 @@
   <span class="fab-plus">+</span><span class="fab-label" id="fabLabel">Добавить операцию</span>
 </button>
 
+<script src="icons.js"></script>
 <script src="orders.js"></script>
 <script src="report.js"></script>
 <script src="recon.js"></script>

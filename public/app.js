@@ -11,6 +11,7 @@ const isKassaTab = () => currentAccount === "cash" || currentAccount === "bank";
 let personFilter = null;     // who_id, чтобы показывать операции только одного человека
 let personBalances = [];
 let showDupsOnly = false;    // чекбокс «Показать только повторы»
+let opsQuery = "";           // строка поиска по операциям
 let ws = null;
 let authToken = null;
 let currentUser = null; // {id, name, is_admin}
@@ -152,7 +153,7 @@ async function submitForgotStep2(e) {
 // Резервная копия всей базы (.sql) — только для администратора
 async function downloadBackup() {
   const btns = document.querySelectorAll("#backupBtn");
-  btns.forEach(b => { b.disabled = true; b.dataset.label = b.textContent; b.textContent = "⏳ Готовлю копию…"; });
+  btns.forEach(b => { b.disabled = true; b.dataset.label = b.innerHTML; b.innerHTML = ic("spinner", "ic-spin") + " Готовлю копию…"; });
   try {
     const res = await fetch("/api/backup", { headers: { Authorization: `Bearer ${authToken}` } });
     if (!res.ok) {
@@ -172,7 +173,7 @@ async function downloadBackup() {
   } catch (err) {
     alert("Не удалось сделать резервную копию: " + err.message);
   } finally {
-    btns.forEach(b => { b.disabled = false; b.textContent = b.dataset.label || "💾 Резервная копия"; });
+    btns.forEach(b => { b.disabled = false; b.innerHTML = b.dataset.label || ic("backup") + " Резервная копия"; });
   }
 }
 
@@ -196,9 +197,9 @@ async function loadUsers() {
           <div class="user-row-meta">логин: ${escapeHtml(u.username || "—")}${u.phone ? " · " + escapeHtml(u.phone) : ""}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
-          <button class="user-row-del" title="Задать имя пользователя" onclick="editUsername(${u.id}, '${(u.username || "").replace(/'/g, "\\'")}')">✎</button>
+          <button class="user-row-del" title="Задать имя пользователя" onclick="editUsername(${u.id}, '${(u.username || "").replace(/'/g, "\\'")}')">${ic("edit")}</button>
           ${!u.is_admin ? `<label class="checkbox-row" style="margin:0;font-size:12px;"><input type="checkbox" ${u.can_view_all ? "checked" : ""} onchange="toggleViewAll(${u.id}, this.checked)"> видит всех</label>` : ""}
-          ${u.id !== currentUser.id ? `<button class="user-row-del" onclick="deleteUser(${u.id})">🗑</button>` : ""}
+          ${u.id !== currentUser.id ? `<button class="user-row-del" onclick="deleteUser(${u.id})">${ic("trash")}</button>` : ""}
         </div>
       </div>
     `).join("") || `<div style="color:var(--muted);font-size:13px;">Пользователей нет</div>`;
@@ -296,23 +297,23 @@ function renderNav() {
     <div class="org-row">
       <button class="org-btn ${currentOrg && o.id===currentOrg.id?'active':''}" onclick="switchOrgById(${o.id})">${escapeHtml(o.name)}</button>
       ${isAdmin ? `
-        <button class="org-action" title="Переименовать" onclick="renameOrgPrompt(${o.id}, event)">✎</button>
-        <button class="org-action" title="Удалить" onclick="deleteOrgPrompt(${o.id}, event)">🗑</button>
+        <button class="org-action" title="Переименовать" onclick="renameOrgPrompt(${o.id}, event)">${ic("edit")}</button>
+        <button class="org-action" title="Удалить" onclick="deleteOrgPrompt(${o.id}, event)">${ic("trash")}</button>
       ` : ""}
     </div>
   `).join("");
 
   const html = `
     <div class="brand">
-      <div class="brand-icon">🏢</div>
+      <div class="brand-icon">${ic("logo")}</div>
       <div><div class="brand-title">Касса</div><div class="brand-sub">Учёт расходов</div></div>
     </div>
     <div class="nav-label">Организации</div>
     ${orgRows}
     ${isAdmin ? `<button class="add-org-btn" onclick="showAddOrg(this)">+ организация</button>` : ""}
     <div class="sidebar-footer">
-      ${isAdmin ? `<button class="add-org-btn" style="margin-bottom:8px;" onclick="openUsersModal()">👤 Пользователи</button>
-      <button class="add-org-btn" id="backupBtn" style="margin-bottom:8px;" onclick="downloadBackup()" title="Скачать всю базу одним файлом .sql">💾 Резервная копия</button>` : ""}
+      ${isAdmin ? `<button class="add-org-btn" style="margin-bottom:8px;" onclick="openUsersModal()">${ic("users")} Пользователи</button>
+      <button class="add-org-btn" id="backupBtn" style="margin-bottom:8px;" onclick="downloadBackup()" title="Скачать всю базу одним файлом .sql">${ic("backup")} Резервная копия</button>` : ""}
       <div class="user-chip">
         <div>
           <div class="user-name">${currentUser ? escapeHtml(currentUser.name) : ""}</div>
@@ -336,8 +337,8 @@ function showAddOrg(btn) {
   btn.outerHTML = `
     <div class="add-org-row">
       <input id="newOrgInput" placeholder="Название" onkeydown="if(event.key==='Enter')addOrg()">
-      <button onclick="addOrg()">✓</button>
-      <button class="cancel" onclick="renderNav()">✕</button>
+      <button onclick="addOrg()">${ic("check")}</button>
+      <button class="cancel" onclick="renderNav()">${ic("close")}</button>
     </div>`;
   document.getElementById("newOrgInput").focus();
 }
@@ -467,8 +468,8 @@ function updateAccountTabsUI() {
     : isOrders ? "Заказы: цена, оплаты клиентов, затраты и результат"
     : currentAccount === "cash" ? "Касса и учёт операций" : "Банковский счёт и движения по нему";
   if (!isKassaTab()) return;
-  document.getElementById("personBalances").style.display = currentAccount === "cash" ? "grid" : "none";
-  document.getElementById("dynamicsChart").style.display = currentAccount === "bank" ? "block" : "none";
+  document.getElementById("personBalances").style.display = currentAccount === "cash" ? "" : "none";
+  if (currentAccount !== "cash") document.getElementById("overview").classList.remove("with-people");
 }
 
 // ---------- Операции ----------
@@ -501,20 +502,26 @@ async function loadPersonBalances() {
 
 function renderPersonBalances() {
   const el = document.getElementById("personBalances");
+  const overview = document.getElementById("overview");
   if (currentAccount !== "cash") return;
   const list = orderPeriod === "all" ? personBalances : personBalancesForPeriod();
+  overview.classList.toggle("with-people", list.length > 0);
   if (list.length === 0) {
     el.innerHTML = "";
     return;
   }
   const canBrowseOthers = currentUser && (currentUser.is_admin || currentUser.can_view_all);
-  el.innerHTML = list.map(p => `
-    <div class="person-card ${personFilter === p.who_id ? 'active' : ''}" ${canBrowseOthers ? `onclick="togglePersonFilter(${p.who_id})"` : ""} style="${canBrowseOthers ? "" : "cursor:default;"}">
-      <div class="person-card-name">${escapeHtml(p.who_name || "—")}${!canBrowseOthers ? ' <span style="color:var(--muted);font-weight:400;">(вы)</span>' : ""}</div>
-      <div class="person-card-balance" style="color:${Number(p.balance) < 0 ? 'var(--expense)' : 'var(--income)'}">${fmt(p.balance)}</div>
-      <div class="person-card-detail">получено ${fmt(p.total_income)} · потрачено ${fmt(p.total_expense)}</div>
-    </div>
-  `).join("");
+  el.innerHTML = `
+    <div class="pp-head">Наличные у сотрудников${canBrowseOthers ? `<span class="pp-hint">нажмите, чтобы показать операции</span>` : ""}</div>
+    ${list.map(p => `
+    <div class="person-row ${personFilter === p.who_id ? "active" : ""} ${canBrowseOthers ? "clickable" : ""}" ${canBrowseOthers ? `onclick="togglePersonFilter(${p.who_id})"` : ""}>
+      <div class="person-avatar">${escapeHtml((p.who_name || "?").trim().charAt(0).toUpperCase())}</div>
+      <div class="person-main">
+        <div class="person-name">${escapeHtml(p.who_name || "—")}${!canBrowseOthers ? ' <span class="muted small">(вы)</span>' : ""}</div>
+        <div class="person-detail">+${fmtN(p.total_income)} · −${fmtN(p.total_expense)}</div>
+      </div>
+      <div class="person-balance" style="color:${Number(p.balance) < 0 ? "var(--expense)" : "var(--text)"}">${fmt(p.balance)}</div>
+    </div>`).join("")}`;
 }
 
 function togglePersonFilter(whoId) {
@@ -534,7 +541,7 @@ function renderPersonFilterBar() {
   }
   const person = personBalances.find(p => p.who_id === personFilter);
   bar.style.display = "flex";
-  bar.innerHTML = `Показаны только операции: <b style="color:var(--text)">${escapeHtml(person ? person.who_name : "")}</b> <button onclick="togglePersonFilter(${personFilter})">Сбросить фильтр ✕</button>`;
+  bar.innerHTML = `Показаны только операции: <b style="color:var(--text)">${escapeHtml(person ? person.who_name : "")}</b> <button onclick="togglePersonFilter(${personFilter})">Сбросить фильтр ${ic("close", "ic-inline")}</button>`;
 }
 
 function connectWebSocket(orgId) {
@@ -606,7 +613,7 @@ function render() {
   const dups = findDuplicateIds(allSorted);
   if (!dups.size) showDupsOnly = false;
   renderDupBanner("dupBanner", dups.size, "операция", "операции", "операций", "toggleDupsOnly");
-  const sorted = showDupsOnly
+  let sorted = showDupsOnly
     ? allSorted.filter(t => dups.has(t.id)).sort((a, b) => dups.get(a.id) - dups.get(b.id) || a.id - b.id)
     : allSorted;
   const income = filtered.filter(t => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
@@ -625,13 +632,39 @@ function render() {
     : "Пока нет операций — добавьте первую через кнопку «Добавить операцию»";
 
   renderPersonFilterBar();
-  if (currentAccount === "bank") drawDynamicsChart();
+  drawDynamicsChart(byPerson);
+
+  const nIn = filtered.filter(t => t.type === "income").length, nOut = filtered.length - nIn;
+  document.getElementById("kpiIncomeSub").textContent = `${nIn} ${plural(nIn, "операция", "операции", "операций")} · ${isPeriod ? periodLabel() : "за всё время"}`;
+  document.getElementById("kpiExpenseSub").textContent = `${nOut} ${plural(nOut, "операция", "операции", "операций")} · ${isPeriod ? periodLabel() : "за всё время"}`;
+  document.getElementById("kpiBalanceSub").textContent = currentAccount === "bank" ? "на банковском счёте" : (personFilter ? "у выбранного сотрудника" : "наличными в кассе");
 
   const tableWrap = document.getElementById("tableWrap");
   const cardList = document.getElementById("cardList");
   const emptyState = document.getElementById("emptyState");
 
+  // Поиск по операциям (описание, источник, категория, комментарий, кто, сумма, заказ)
+  const q = opsQuery.trim().toLowerCase();
+  const qNum = q.replace(/[\s\u00a0₸]/g, "").replace(",", ".");
+  const shownList = !q ? sorted : sorted.filter(t => {
+    const hay = [t.description, t.source, t.category_name, t.comment, t.who_name, t.order_title].filter(Boolean).join(" ").toLowerCase();
+    return hay.includes(q) || (qNum && /^\d+(\.\d+)?$/.test(qNum) && String(Number(t.amount)).includes(qNum));
+  });
+  document.getElementById("opsCount").textContent = q ? `${shownList.length} из ${sorted.length}` : String(sorted.length);
+  const sumEl = document.getElementById("opsSummary");
+  if (q) {
+    const sIn = shownList.filter(t => t.type === "income").reduce((a, t) => a + Number(t.amount), 0);
+    const sOut = shownList.filter(t => t.type === "expense").reduce((a, t) => a + Number(t.amount), 0);
+    sumEl.style.display = "block";
+    sumEl.innerHTML = `Найдено: <b>${shownList.length}</b> · приход <b style="color:var(--income)">${fmt(sIn)}</b> · расход <b style="color:var(--expense)">${fmt(sOut)}</b>
+      <button class="link-btn" onclick="clearOpsSearch()">сбросить поиск</button>`;
+  } else {
+    sumEl.style.display = "none";
+  }
+  sorted = shownList;
+
   if (sorted.length === 0) {
+    emptyState.textContent = q ? "Ничего не найдено — измените запрос" : emptyState.textContent;
     tableWrap.style.display = "none";
     cardList.innerHTML = "";
     emptyState.style.display = "block";
@@ -643,16 +676,16 @@ function render() {
   document.getElementById("tableBody").innerHTML = sorted.map(t => {
     const dateFmt = new Date(t.occurred_on).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
     const catCell = t.transfer_id
-      ? `<span style="color:var(--lilac-soft)">↔ Перевод ${t.account === "cash" ? (t.type === "income" ? "из банка" : "в банк") : (t.type === "income" ? "из кассы" : "в кассу")}</span>`
+      ? `<span style="color:var(--lilac-soft)">${ic("transfer", "ic-inline")} Перевод ${t.account === "cash" ? (t.type === "income" ? "из банка" : "в банк") : (t.type === "income" ? "из кассы" : "в кассу")}</span>`
       : t.type === "income"
       ? `<span style="color:var(--income)">Приход · ${escapeHtml(t.source || "—")}</span>`
       : t.category_name
         ? `<span style="color:${t.category_color || catColor(t.category_name)}">${escapeHtml(t.category_name)}</span>`
         : `<span style="color:var(--expense)">Расход</span>`;
-    const descCell = (dups.has(t.id) ? `<span class="dup-mark" title="Похоже на повтор: в этот день есть такая же операция">⚠</span> ` : "")
+    const descCell = (dups.has(t.id) ? `<span class="dup-mark" title="Похоже на повтор: в этот день есть такая же операция">${ic("warn", "ic-warn")}</span> ` : "")
       + escapeHtml(t.transfer_id ? (t.comment || "—") : (t.description || "—"))
       + (t.comment && !t.transfer_id ? ` <span style="color:var(--muted);font-style:italic;">· ${escapeHtml(t.comment)}</span>` : "");
-    const orderTag = t.order_id ? `<div><span class="order-tag" title="Заказ: ${escapeHtml(t.order_customer || "")}">📋 ${escapeHtml(t.order_title || "заказ")}</span></div>` : "";
+    const orderTag = t.order_id ? `<div><span class="order-tag" title="Заказ: ${escapeHtml(t.order_customer || "")}">${ic("orders", "ic-inline")} ${escapeHtml(t.order_title || "заказ")}</span></div>` : "";
     const canEdit = currentUser && (currentUser.is_admin || String(t.created_by) === String(currentUser.id));
     const grpCls = showDupsOnly ? ` class="dup-row dup-g${dups.get(t.id) % 2}${isGroupStart(sorted, t, dups) ? " dup-first" : ""}"` : "";
     return `<tr${grpCls}>
@@ -662,7 +695,7 @@ function render() {
       <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${descCell}</td>
       <td style="color:var(--muted)">${escapeHtml(t.who_name || "—")}</td>
       <td class="amount-cell ${t.type}">${t.type === "income" ? "+" : "−"}${fmt(t.amount)}</td>
-      <td>${canEdit ? `<button class="del-btn" onclick='editTx(${t.id})'>✎</button><button class="del-btn" onclick="removeTx(${t.id})">🗑</button>` : ""}</td>
+      <td>${canEdit ? `<button class="del-btn" onclick='editTx(${t.id})'>${ic("edit")}</button><button class="del-btn" onclick="removeTx(${t.id})">${ic("trash")}</button>` : ""}</td>
     </tr>`;
   }).join("");
 
@@ -671,8 +704,8 @@ function render() {
     const icon = t.type === "income" ? "↓" : "↑";
     const dateFmt = new Date(t.occurred_on).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
     const canEdit = currentUser && (currentUser.is_admin || String(t.created_by) === String(currentUser.id));
-    const title = (dups.has(t.id) ? "⚠ " : "") + (t.transfer_id
-      ? "↔ " + escapeHtml(t.source || t.description || "Перевод")
+    const title = (dups.has(t.id) ? ic("warn", "ic-warn") + " " : "") + (t.transfer_id
+      ? ic("transfer", "ic-inline") + " " + escapeHtml(t.source || t.description || "Перевод")
       : t.type === "income"
       ? "Приход · " + escapeHtml(t.source || "—")
       : escapeHtml(t.description || t.category_name || "Расход"));
@@ -684,11 +717,11 @@ function render() {
           <span>${dateFmt}</span>
           ${t.type === "expense" && t.category_name ? `<span style="color:${t.category_color || catColor(t.category_name)}">· ${escapeHtml(t.category_name)}</span>` : ""}
           ${t.who_name ? `<span>· ${escapeHtml(t.who_name)}</span>` : ""}
-          ${t.order_id ? `<span class="order-tag">📋 ${escapeHtml(t.order_title || "заказ")}</span>` : ""}
+          ${t.order_id ? `<span class="order-tag">${ic("orders", "ic-inline")} ${escapeHtml(t.order_title || "заказ")}</span>` : ""}
         </div>
       </div>
       <div class="tx-amount" style="color:${t.type === "income" ? "var(--income)" : "var(--expense)"};">${t.type === "income" ? "+" : "−"}${fmt(t.amount)}</div>
-      ${canEdit ? `<button class="del-btn" onclick='editTx(${t.id})'>✎</button><button class="del-btn" onclick="removeTx(${t.id})">🗑</button>` : ""}
+      ${canEdit ? `<button class="del-btn" onclick='editTx(${t.id})'>${ic("edit")}</button><button class="del-btn" onclick="removeTx(${t.id})">${ic("trash")}</button>` : ""}
     </div>`;
   }).join("");
 }
@@ -732,8 +765,8 @@ function renderDupBanner(elId, count, one, few, many, toggleFn) {
       <span>Показать только повторы</span>
     </label>
     <span class="dup-text">${checked
-      ? `Показаны ${count} ${word}: одинаковые стоят рядом. Удалите лишнюю (🗑) — остаток сойдётся.`
-      : `⚠ Найдено ${count} ${word}, похожих на повтор (тот же день, сумма и описание) — отмечены значком ⚠.`}</span>`;
+      ? `Показаны ${count} ${word}: одинаковые стоят рядом. Удалите лишнюю (${ic("trash", "ic-inline")}) — остаток сойдётся.`
+      : `${ic("warn", "ic-warn")} Найдено ${count} ${word}, похожих на повтор (тот же день, сумма и описание) — отмечены значком ${ic("warn", "ic-warn")}.`}</span>`;
 }
 
 function toggleDupsOnly(on) {
@@ -742,47 +775,146 @@ function toggleDupsOnly(on) {
   window.scrollTo({ top: document.getElementById("dupBanner").offsetTop - 20, behavior: "smooth" });
 }
 
-function drawDynamicsChart() {
-  const svg = document.getElementById("dynamicsSvg");
-  const sortedAsc = [...transactions].filter(beforePeriodEnd).sort((a, b) =>
-    (a.occurred_on + (a.occurred_at || "")).localeCompare(b.occurred_on + (b.occurred_at || ""))
-  );
-  if (sortedAsc.length === 0) {
-    svg.innerHTML = `<text x="300" y="80" fill="var(--muted)" font-size="13" text-anchor="middle">Пока нет операций для графика</text>`;
+// ---------- График «Динамика остатка» ----------
+// Рисуется в реальном размере блока (без растягивания), остаток на конец каждого дня,
+// подписи сумм и дат, подсказка при наведении. При изменении ширины окна перерисовывается.
+let dynPoints = [];
+
+function shortMoney(v) {
+  const a = Math.abs(v), sign = v < 0 ? "−" : "";
+  if (a >= 1e6) return sign + (a / 1e6).toFixed(a >= 1e7 ? 0 : 1).replace(".", ",") + " млн";
+  if (a >= 1e3) return sign + Math.round(a / 1e3) + " тыс";
+  return sign + Math.round(a);
+}
+
+function niceTicks(min, max, count = 4) {
+  const span = max - min || Math.abs(max) || 1;
+  const raw = span / count, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw) || 10 * mag;
+  const lo = Math.floor(min / step) * step, hi = Math.ceil(max / step) * step;
+  const ticks = [];
+  for (let v = lo; v <= hi + step / 2; v += step) ticks.push(Math.round(v * 100) / 100);
+  return ticks;
+}
+
+function drawDynamicsChart(list) {
+  if (list) drawDynamicsChart.list = list;
+  list = drawDynamicsChart.list || transactions;
+  const box = document.getElementById("dynBox");
+  const meta = document.getElementById("dynMeta");
+  if (!box) return;
+
+  // остаток на конец каждого дня; первая точка — остаток на начало периода
+  const [from] = periodRange();
+  const asc = [...list].filter(beforePeriodEnd).sort((a, b) =>
+    (a.occurred_on + (a.occurred_at || "")).localeCompare(b.occurred_on + (b.occurred_at || "")));
+  let bal = 0, opening = 0;
+  const byDay = new Map();
+  for (const t of asc) {
+    const d = t.occurred_on.slice(0, 10), amt = Number(t.amount);
+    bal += t.type === "income" ? amt : -amt;
+    if (from && d < from) { opening = bal; continue; }
+    if (!byDay.has(d)) byDay.set(d, { date: d, inc: 0, exp: 0, balance: 0 });
+    const p = byDay.get(d);
+    t.type === "income" ? p.inc += amt : p.exp += amt;
+    p.balance = bal;
+  }
+  dynPoints = [...byDay.values()];
+  if (from && dynPoints.length && dynPoints[0].date > from) dynPoints.unshift({ date: from, inc: 0, exp: 0, balance: opening, start: true });
+
+  if (dynPoints.length === 0) {
+    meta.innerHTML = "";
+    box.innerHTML = `<div class="dyn-empty">${ic("report", "ic-xl")}<span>${list.length ? "За выбранный период движений нет" : "Пока нет операций для графика"}</span></div>`;
     return;
   }
+  const first = dynPoints[0].start ? dynPoints[0].balance : (dynPoints[0].balance - dynPoints[0].inc + dynPoints[0].exp);
+  const last = dynPoints[dynPoints.length - 1].balance, change = last - first;
+  meta.innerHTML = `<span class="dyn-now">${fmt(last)}</span>
+    <span class="dyn-change ${change >= 0 ? "up" : "down"}">${change >= 0 ? "+" : "−"}${fmtN(Math.abs(change))} ₸ за период</span>`;
 
-  let running = 0;
-  const points = sortedAsc.map(t => {
-    running += t.type === "income" ? Number(t.amount) : -Number(t.amount);
-    return { date: t.occurred_on, balance: running, show: inPeriod(t) };
-  }).filter(p => p.show);
-  if (points.length === 0) {
-    svg.innerHTML = `<text x="300" y="80" fill="var(--muted)" font-size="13" text-anchor="middle">За выбранный период движений нет</text>`;
-    return;
-  }
+  const W = Math.max(280, box.clientWidth || 600), H = W < 520 ? 170 : 210;
+  const padL = 58, padR = 14, padT = 14, padB = 26;
+  const vals = dynPoints.map(p => p.balance);
+  const ticks = niceTicks(Math.min(0, ...vals), Math.max(0, ...vals));
+  const yMin = ticks[0], yMax = ticks[ticks.length - 1];
+  const x = i => dynPoints.length === 1 ? padL + (W - padL - padR) / 2 : padL + i / (dynPoints.length - 1) * (W - padL - padR);
+  const y = v => padT + (1 - (v - yMin) / (yMax - yMin || 1)) * (H - padT - padB);
 
-  const minBal = Math.min(0, ...points.map(p => p.balance));
-  const maxBal = Math.max(0, ...points.map(p => p.balance));
-  const range = maxBal - minBal || 1;
-  const W = 600, H = 160, PAD = 8;
+  const line = dynPoints.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.balance).toFixed(1)}`).join(" ");
+  const area = `${line} L${x(dynPoints.length - 1).toFixed(1)},${y(Math.max(yMin, 0)).toFixed(1)} L${x(0).toFixed(1)},${y(Math.max(yMin, 0)).toFixed(1)} Z`;
+  const nX = Math.min(dynPoints.length, Math.max(2, Math.floor((W - padL - padR) / 90)));
+  const xIdx = [...new Set(Array.from({ length: nX }, (_, k) => Math.round(k * (dynPoints.length - 1) / Math.max(1, nX - 1))))];
+  const dm = d => d.slice(8, 10) + "." + d.slice(5, 7);
+  const lastI = dynPoints.length - 1;
 
-  const coords = points.map((p, i) => {
-    const x = points.length === 1 ? W / 2 : PAD + (i / (points.length - 1)) * (W - PAD * 2);
-    const y = H - PAD - ((p.balance - minBal) / range) * (H - PAD * 2);
-    return [x, y];
+  box.innerHTML = `
+    <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" class="dyn-svg">
+      <defs><linearGradient id="dynGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#A855F7" stop-opacity=".35"/><stop offset="1" stop-color="#A855F7" stop-opacity="0"/></linearGradient></defs>
+      ${ticks.map(t => `<line x1="${padL}" x2="${W - padR}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}" class="${t === 0 ? "dyn-zero" : "dyn-grid"}"/>
+        <text x="${padL - 8}" y="${(y(t) + 4).toFixed(1)}" class="dyn-ylab" text-anchor="end">${shortMoney(t)}</text>`).join("")}
+      ${xIdx.map(i => `<text x="${x(i).toFixed(1)}" y="${H - 7}" class="dyn-xlab" text-anchor="${i === 0 ? "start" : i === lastI ? "end" : "middle"}">${dm(dynPoints[i].date)}</text>`).join("")}
+      <path d="${area}" fill="url(#dynGrad)"/>
+      <path d="${line}" class="dyn-line"/>
+      ${dynPoints.length <= 45 ? dynPoints.map((p, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(p.balance).toFixed(1)}" r="2.6" class="dyn-dot ${p.balance < 0 ? "neg" : ""}"/>`).join("") : ""}
+      <circle cx="${x(lastI).toFixed(1)}" cy="${y(last).toFixed(1)}" r="5" class="dyn-last"/>
+      <line id="dynCross" x1="0" x2="0" y1="${padT}" y2="${H - padB}" class="dyn-cross" style="display:none"/>
+      <circle id="dynHover" r="5" class="dyn-last" style="display:none"/>
+      <rect x="${padL}" y="0" width="${W - padL - padR}" height="${H}" fill="transparent" id="dynHit"/>
+    </svg>
+    <div class="dyn-tip" id="dynTip" style="display:none"></div>`;
+
+  const hit = document.getElementById("dynHit"), tip = document.getElementById("dynTip");
+  const cross = document.getElementById("dynCross"), dot = document.getElementById("dynHover");
+  const move = e => {
+    const r = hit.getBoundingClientRect();
+    const px = (e.touches ? e.touches[0].clientX : e.clientX) - r.left + padL;
+    let best = 0;
+    dynPoints.forEach((p, i) => { if (Math.abs(x(i) - px) < Math.abs(x(best) - px)) best = i; });
+    const p = dynPoints[best], cx = x(best), cy = y(p.balance);
+    cross.setAttribute("x1", cx); cross.setAttribute("x2", cx); cross.style.display = "";
+    dot.setAttribute("cx", cx); dot.setAttribute("cy", cy); dot.style.display = "";
+    tip.innerHTML = `<div class="tip-date">${dateRu(p.date)}${p.start ? " · начало периода" : ""}</div>
+      <div class="tip-bal">${fmt(p.balance)}</div>
+      ${p.inc ? `<div class="tip-in">+${fmtN(p.inc)} ₸</div>` : ""}${p.exp ? `<div class="tip-out">−${fmtN(p.exp)} ₸</div>` : ""}`;
+    tip.style.display = "block";
+    const tw = tip.offsetWidth;
+    tip.style.left = Math.min(Math.max(cx - tw / 2, 4), W - tw - 4) + "px";
+    tip.style.top = Math.max(cy - tip.offsetHeight - 12, 0) + "px";
+  };
+  const leave = () => { tip.style.display = "none"; cross.style.display = "none"; dot.style.display = "none"; };
+  hit.addEventListener("mousemove", move);
+  hit.addEventListener("touchstart", move, { passive: true });
+  hit.addEventListener("touchmove", move, { passive: true });
+  hit.addEventListener("mouseleave", leave);
+}
+
+// Перерисовываем при изменении ширины блока графика (окно, панель сотрудников, поворот телефона)
+if (window.ResizeObserver) {
+  let lastW = 0;
+  new ResizeObserver(entries => {
+    const w = Math.round(entries[0].contentRect.width);
+    if (!w || Math.abs(w - lastW) < 2) return;
+    lastW = w;
+    clearTimeout(drawDynamicsChart.rt);
+    drawDynamicsChart.rt = setTimeout(() => drawDynamicsChart(), 60);
+  }).observe(document.getElementById("dynBox"));
+} else {
+  window.addEventListener("resize", () => {
+    clearTimeout(drawDynamicsChart.rt);
+    drawDynamicsChart.rt = setTimeout(() => drawDynamicsChart(), 150);
   });
+}
 
-  const zeroY = H - PAD - ((0 - minBal) / range) * (H - PAD * 2);
-  const linePath = coords.map((c, i) => `${i === 0 ? "M" : "L"}${c[0].toFixed(1)},${c[1].toFixed(1)}`).join(" ");
-  const areaPath = `${linePath} L${coords[coords.length - 1][0].toFixed(1)},${H - PAD} L${coords[0][0].toFixed(1)},${H - PAD} Z`;
-
-  svg.innerHTML = `
-    <line x1="0" y1="${zeroY.toFixed(1)}" x2="${W}" y2="${zeroY.toFixed(1)}" stroke="var(--border)" stroke-width="1" stroke-dasharray="4 4"/>
-    <path d="${areaPath}" fill="var(--lilac-deep)" opacity="0.15"/>
-    <path d="${linePath}" fill="none" stroke="var(--lilac)" stroke-width="2"/>
-    ${coords.map((c, i) => `<circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="2.5" fill="${points[i].balance < 0 ? 'var(--expense)' : 'var(--lilac)'}"/>`).join("")}
-  `;
+function onOpsSearch() {
+  opsQuery = document.getElementById("opsSearch").value;
+  clearTimeout(onOpsSearch.t);
+  onOpsSearch.t = setTimeout(render, 120);
+}
+function clearOpsSearch() {
+  opsQuery = "";
+  document.getElementById("opsSearch").value = "";
+  render();
 }
 
 async function removeTx(id) {
@@ -905,7 +1037,7 @@ function checkPossibleDuplicate() {
     && Number(t.amount) === amount && t.occurred_on.slice(0, 10) === date);
   if (!same) { el.style.display = "none"; return; }
   const what = same.type === "income" ? (same.source || "приход") : (same.description || same.category_name || "расход");
-  el.innerHTML = `⚠ За ${date.split("-").reverse().join(".")} уже есть ${same.type === "income" ? "приход" : "расход"} на ${fmt(amount)}: «${escapeHtml(what)}»${same.who_name ? " (" + escapeHtml(same.who_name) + ")" : ""}. Проверьте, не вносите ли второй раз.`;
+  el.innerHTML = `${ic("warn", "ic-warn")} За ${date.split("-").reverse().join(".")} уже есть ${same.type === "income" ? "приход" : "расход"} на ${fmt(amount)}: «${escapeHtml(what)}»${same.who_name ? " (" + escapeHtml(same.who_name) + ")" : ""}. Проверьте, не вносите ли второй раз.`;
   el.style.display = "block";
 }
 
