@@ -6,7 +6,8 @@ let currentOrg = null;
 let categories = [];
 let transactions = [];
 let currentType = "expense";
-let currentAccount = "cash"; // 'cash' | 'bank' | 'orders' (вкладка «Заказы», см. orders.js)
+let currentAccount = "cash"; // 'cash' | 'bank' | 'orders' (см. orders.js) | 'report' (см. report.js)
+const isKassaTab = () => currentAccount === "cash" || currentAccount === "bank";
 let personFilter = null;     // who_id, чтобы показывать операции только одного человека
 let personBalances = [];
 let showDupsOnly = false;    // чекбокс «Показать только повторы»
@@ -432,32 +433,40 @@ async function switchOrg(org) {
 
 function switchAccount(account) {
   if (currentAccount === account || !currentOrg) return;
-  if (account === "orders" && !isPartner()) return;
+  if ((account === "orders" || account === "report") && !isPartner()) return;
   currentAccount = account;
   personFilter = null;
   showDupsOnly = false;
   showOrderDupsOnly = false;
   updateAccountTabsUI();
   if (account === "orders") return loadOrders();
+  if (account === "report") return loadReport();
   loadTransactions(currentOrg.id);
   if (account === "cash") loadPersonBalances();
 }
 
 function updateAccountTabsUI() {
   const isOrders = currentAccount === "orders";
+  const isReport = currentAccount === "report";
+  document.getElementById("tabReport").classList.toggle("active", isReport);
+  document.getElementById("tabReport").style.display = isPartner() ? "" : "none";
+  document.getElementById("reportView").style.display = isReport ? "block" : "none";
+  document.querySelector(".fab-add-btn").style.display = isReport ? "none" : "";
   document.getElementById("tabCash").classList.toggle("active", currentAccount === "cash");
   document.getElementById("tabBank").classList.toggle("active", currentAccount === "bank");
   document.getElementById("tabOrders").classList.toggle("active", isOrders);
   document.getElementById("tabOrders").style.display = isPartner() ? "" : "none";
   document.getElementById("ordersView").style.display = isOrders ? "block" : "none";
-  document.getElementById("kassaView").style.display = isOrders ? "none" : "block";
-  document.getElementById("importBtn").style.display = isOrders ? "none" : "";
+  document.getElementById("kassaView").style.display = isKassaTab() ? "block" : "none";
+  document.getElementById("importBtn").style.display = isKassaTab() ? "" : "none";
   document.getElementById("ordEntity").style.display = isOrders ? "" : "none";
+  updateReconButton();
   document.getElementById("fabLabel").textContent = isOrders ? "Новый заказ" : "Добавить операцию";
   document.getElementById("mainTitleSub").textContent =
-    isOrders ? "Заказы: цена, оплаты клиентов, затраты и результат"
+    isReport ? "Отчёт: сколько наличными и сколько по безналу"
+    : isOrders ? "Заказы: цена, оплаты клиентов, затраты и результат"
     : currentAccount === "cash" ? "Касса и учёт операций" : "Банковский счёт и движения по нему";
-  if (isOrders) return;
+  if (!isKassaTab()) return;
   document.getElementById("personBalances").style.display = currentAccount === "cash" ? "grid" : "none";
   document.getElementById("dynamicsChart").style.display = currentAccount === "bank" ? "block" : "none";
 }
@@ -542,6 +551,7 @@ function connectWebSocket(orgId) {
           refreshOpenOrderDetails();
           return;
         }
+        if (currentAccount === "report") return loadReport(true);
         loadTransactions(currentOrg.id, true);
         if (currentAccount === "cash") loadPersonBalances();
       }
@@ -577,11 +587,13 @@ function personBalancesForPeriod() {
 
 function onPeriodChange() {
   if (currentAccount === "orders") return loadOrders();
+  if (currentAccount === "report") return loadReport();
   renderPersonBalances();
   render();
 }
 
 function render() {
+  reconOnTransactionsChanged();   // если открыта сверка с выпиской — пересчитать её
   const byPerson = personFilter
     ? transactions.filter(t => t.who_id === personFilter)
     : transactions;
@@ -945,12 +957,12 @@ async function submitForm(e, keepOpen) {
     const where = currentType === "transfer"
       ? (formAccount === "cash" ? "Перевод касса → банк сохранён" : "Перевод банк → касса сохранён")
       : `Сохранено в ${formAccount === "bank" ? "банк" : "кассу"}`;
-    if (!editingTxId && currentType !== "transfer" && formAccount !== currentAccount && currentAccount !== "orders") {
+    if (!editingTxId && currentType !== "transfer" && formAccount !== currentAccount && isKassaTab()) {
       showToast(`${where} — она на вкладке «${formAccount === "bank" ? "Банк" : "Касса"}»`);
     } else {
       showToast(where);
     }
-    if (currentAccount !== "orders") {
+    if (isKassaTab()) {
       await loadTransactions(currentOrg.id, true);
       if (currentAccount === "cash") await loadPersonBalances();
     }
@@ -1018,6 +1030,7 @@ async function init() {
 
 // Кнопка «⬇ Excel» и плавающая «+» работают по текущей вкладке
 function exportCurrentView() {
+  if (currentAccount === "report") return exportReportToExcel();
   return currentAccount === "orders" ? exportOrdersToExcel() : exportToExcel();
 }
 function primaryAction() {

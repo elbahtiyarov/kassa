@@ -114,8 +114,10 @@ async function loadOrders(silent) {
   const errEl = document.getElementById("ordersError");
   if (!silent) loading.style.display = "block";
   errEl.style.display = "none";
+  const seq = ++loadOrders.seq;
   try {
     const data = await api(`/orgs/${currentOrg.id}/orders?${qs}`);
+    if (seq !== loadOrders.seq) return;
     orders = data.orders;
     orderEntities = data.entities;
     renderEntityFilter(entity);
@@ -126,6 +128,8 @@ async function loadOrders(silent) {
   }
   loading.style.display = "none";
 }
+
+loadOrders.seq = 0;
 
 function renderEntityFilter(selected) {
   const sel = document.getElementById("ordEntity");

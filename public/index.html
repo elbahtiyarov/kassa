@@ -82,6 +82,8 @@
           <button class="icon-btn" onclick="exportCurrentView()" title="Скачать таблицу в Excel">⬇ Excel</button>
           <button class="icon-btn" id="importBtn" onclick="document.getElementById('importFile').click()" title="Загрузить операции из Excel">⬆ Excel</button>
           <input type="file" id="importFile" accept=".xlsx,.xls" style="display:none;" onchange="handleImportFile(event)">
+          <button class="icon-btn recon-btn" id="reconBtn" onclick="openRecon()" style="display:none;" title="Сравнить вкладку «Банк» с выпиской банка">🔍 Сверка с выпиской</button>
+          <input type="file" id="reconFile" accept=".xlsx,.xls" style="display:none;" onchange="handleReconFile(event)">
         </div>
       </div>
 
@@ -89,6 +91,7 @@
         <button class="account-tab active" id="tabCash" onclick="switchAccount('cash')">💵 Касса</button>
         <button class="account-tab" id="tabBank" onclick="switchAccount('bank')">🏦 Банк</button>
         <button class="account-tab" id="tabOrders" onclick="switchAccount('orders')" style="display:none;">📋 Заказы</button>
+        <button class="account-tab" id="tabReport" onclick="switchAccount('report')" style="display:none;">📊 Отчёт</button>
       </div>
 
       <!-- Период — общий для «Касса», «Банк» и «Заказы» -->
@@ -105,6 +108,17 @@
           </div>
           <select id="ordEntity" class="filter-select" onchange="loadOrders()" style="display:none;"></select>
         </div>
+
+      <!-- ===== Вкладка «Отчёт»: наличные / безнал ===== -->
+      <div id="reportView" style="display:none;">
+        <div class="seg report-scope" id="reportScope">
+          <button data-s="org" onclick="setReportScope('org')">Эта организация</button>
+          <button data-s="all" onclick="setReportScope('all')">Все организации</button>
+        </div>
+        <div id="reportLoading" class="loading" style="display:none;">Считаю…</div>
+        <div id="reportError" class="error-state" style="display:none;"></div>
+        <div id="reportBody"></div>
+      </div>
 
       <!-- ===== Вкладка «Заказы» ===== -->
       <div id="ordersView" style="display:none;">
@@ -290,6 +304,17 @@
   </div>
 </div>
 
+<!-- Сверка с выпиской банка -->
+<div class="modal-overlay recon-overlay" id="reconOverlay" onclick="closeRecon()">
+  <div class="modal recon-modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-title" id="reconTitle">Сверка с выпиской</div>
+      <button class="close-btn" onclick="closeRecon()">✕</button>
+    </div>
+    <div id="reconBody"></div>
+  </div>
+</div>
+
 <!-- Новый / изменить заказ -->
 <div class="modal-overlay" id="orderOverlay" onclick="closeOrderForm()">
   <div class="modal" onclick="event.stopPropagation()">
@@ -380,6 +405,8 @@
 </button>
 
 <script src="orders.js"></script>
+<script src="report.js"></script>
+<script src="recon.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

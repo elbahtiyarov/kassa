@@ -10,6 +10,7 @@ const transactionsRouter = require("./routes/transactions");
 const usersRouter = require("./routes/users");
 const ordersRouter = require("./routes/orders");
 const backupRouter = require("./routes/backup");
+const reportRouter = require("./routes/report");
 const authMiddleware = require("./middleware/auth");
 const errorHandler = require("./middleware/errorHandler");
 
@@ -26,7 +27,8 @@ app.use("/api/orgs", authMiddleware, orgsRouter);
 app.use("/api/orgs", authMiddleware, transactionsRouter); // /:orgId/transactions живёт внутри этого роутера
 app.use("/api/orgs", authMiddleware, ordersRouter);       // /:orgId/orders и /orders/:id
 app.use("/api/users", authMiddleware, usersRouter);
-app.use("/api/backup", authMiddleware, backupRouter);  // резервная копия базы — только админ
+app.use("/api/backup", authMiddleware, backupRouter);
+app.use("/api/report", authMiddleware, reportRouter);  // отчёт наличные / безнал — админ и партнёры
 
 app.use(errorHandler);
 

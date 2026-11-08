@@ -78,6 +78,33 @@ router.get("/:orgId/categories", async (req, res, next) => {
   }
 });
 
+// Найти или создать категорию по названию (нужно сверке с выпиской: «Комиссии банка», «Налоги и взносы»…).
+// Доступно администратору и партнёрам.
+const NEW_CAT_COLORS = { "комиссии банка": "#9AA5B8", "налоги и взносы": "#E8A0A0", "перевод на карту": "#7FD3E0" };
+router.post("/:orgId/categories", async (req, res, next) => {
+  try {
+    if (!(req.user.is_admin || req.user.can_view_all)) {
+      return res.status(403).json({ error: "Создавать категории могут администратор и партнёры" });
+    }
+    const name = String(req.body.name || "").trim().slice(0, 60);
+    if (!name) return res.status(400).json({ error: "Укажите название категории" });
+    const color = /^#[0-9a-f]{6}$/i.test(req.body.color || "") ? req.body.color : (NEW_CAT_COLORS[name.toLowerCase()] || "#C9C2D9");
+    const { rows: found } = await pool.query(
+      "SELECT id, name, color FROM categories WHERE org_id = $1 AND lower(name) = lower($2)", [req.params.orgId, name]
+    );
+    if (found[0]) return res.json(found[0]);
+    const { rows } = await pool.query(
+      `INSERT INTO categories (org_id, name, color) VALUES ($1, $2, $3)
+       ON CONFLICT (org_id, name) DO UPDATE SET name = EXCLUDED.name
+       RETURNING id, name, color`,
+      [req.params.orgId, name, color]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Остаток по счёту организации (?account=cash|bank, по умолчанию cash)
 router.get("/:orgId/balance", async (req, res, next) => {
   try {
